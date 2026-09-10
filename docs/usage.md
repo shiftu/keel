@@ -2,9 +2,9 @@
 
 对应设计：[design.md](design/design.md)。字段与命令规格：[formats.md](design/formats.md)。
 
-当前实现到 M3：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
-`task` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
-M4 的 `init --from` 与 `sync --codemap` 仍会明确报「尚未实现」。
+当前实现到 M4：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
+`task` / `template` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
+`init --from`、`keel template status|update` 与 `sync --codemap` 都已接上。
 
 ## 安装
 
@@ -82,10 +82,12 @@ Codex 侧还要走一次原生项目信任流程，所以这两项报 `unknown` 
 ### `keel init`
 
 ```
-keel init [--tools claude,codex] [--no-hooks] [--adopt-hooks]
+keel init [--tools claude,codex] [--from <git-url>[@<ref>]] [--no-hooks] [--adopt-hooks]
 ```
 
 不给 `--tools` 就探测 PATH。已有 `.keel/` 时只补缺的文件，不覆盖。
+
+`--from` 从模板仓库起步，见下面的 [`keel template`](#keel-template)。
 
 仓库里已经有别人的 `pre-commit` 时，`init` 会**失败并说明怎么接**，不会静默跳过也不会覆盖：
 
@@ -99,7 +101,7 @@ keel init [--tools claude,codex] [--no-hooks] [--adopt-hooks]
 ### `keel sync`
 
 ```
-keel sync [--dry-run]
+keel sync [--dry-run] [--codemap]
 ```
 
 `.keel/` → 工具原生文件。先完整规划再写入：**有任何冲突就一个文件都不写**。
@@ -109,6 +111,53 @@ JSON 里它写过的那几条 hook 条目和 MCP 键。块外的内容、你自�
 `.claude/settings.json` 里的其他字段，一律原样保留。
 
 托管内容被手工改过时报冲突而不是覆盖。想让改动生效就搬回 `.keel/`。
+
+`--codemap` 这一轮额外生成 `.keel/knowledge/CODEMAP.md`：一张按目录列的仓库地图，
+每行是目录、文件数、文件类型。只列目录，没有符号也没有调用关系。
+内容来自 `git ls-files`，没 `git add` 的文件不算——两台机器上生成的必须一模一样，
+不然每次 sync 都是一个假 diff。
+
+它和别的产物一样归 `generated.yaml` 管，所以**只给一次 `--codemap` 的话，
+下一轮普通 `sync` 会把它删掉**（源没了就清理，和别的产物同一个规则）。
+要长期留着，在 `keel.yaml` 里写 `knowledge.codemap: true`。
+
+### `keel template`
+
+跨仓库复用一套 keel 配置：模板仓库自己就是个 keel 仓库，你导入它 `.keel/` 的可复用部分。
+
+```
+keel init --from <git-url>[@<ref>]      # 首次导入
+keel template status                    # 来源、钉住的 commit、本地改过哪些
+keel template update [--to <ref>] [--dry-run]
+```
+
+导入的是 `keel.yaml`、`skills/**`、`rules/*.md`、`cases/**`。
+**不导入** `decisions/` `memory/` `evidence/` `intent.md`——那些是模板仓库的项目事实，
+证据的 digest 指着它那边的代码，在你这边永远对不上；`intent.md` 是你自己项目要回答的问题。
+
+`tools` 不跟着模板走，它是本机探测结果。其余策略（工作流上限、gate、MCP、knowledge）照模板。
+
+导入的规则**一律落成 `candidate`**，模板里写的是 `active` 也一样，同时清掉 `evidence` 和 `from`。
+模板给的是建议，不是既成事实：要让它生效，你得在本地 `keel decide` 记下自己的理由，
+把规则的 `from` 指过去，再 `keel promote` 跑一遍对照验证。装个模板不等于让别人的仓库
+决定你这边执行什么代码。出处不会丢——`from_template` 把来源和 commit 钉死了。
+
+**更新只快进安全的那些。** `update` 拿模板新版和「上次导入时那一版」「你现在这一版」三方比较：
+
+| 你改过吗 | 模板改过吗 | 结果 |
+|---|---|---|
+| 没有 | 改了 | 快进，写入模板新版 |
+| 改了 | 没改 | 保留你的，模板那版不会盖上来 |
+| 改了 | 也改了 | **冲突，一个字节都不写**，退出码 1 |
+| 没有这个文件 | 新增 | 写入 |
+| 你删了 | — | 不写回 |
+| — | 模板删了 | 不删你的 |
+
+冲突不阻塞其他文件，能快进的照常快进。想要模板那一版，把本地改动挪走再 `update`；
+想留本地的，不用管——冲突文件的基线不推进，下次还会提醒你。
+
+`status` 不联网，只回答「本地相对导入基线动过什么」。要知道模板那边有没有新版，
+用 `keel template update --dry-run`。
 
 ### `keel decide`
 
@@ -313,6 +362,10 @@ mcp:
       command: gitea-mcp
       args: ["-t", "stdio"]
       env_vars: [GITEA_TOKEN]   # 只声明转发哪些环境变量；禁止写明文密钥
+
+knowledge:
+  docs: [README.md, "docs/**/*.md"]
+  codemap: false            # true 则每次 sync 都刷新 knowledge/CODEMAP.md
 ```
 
 `go.mod` 与 `package.json` 会被解析成依赖集合，能区分格式调整、版本升级和新增依赖。

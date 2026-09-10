@@ -57,6 +57,10 @@ type MCPServer struct {
 type KnowledgeConfig struct {
 	Docs    []string `yaml:"docs"`
 	Exclude []string `yaml:"exclude"`
+	// Codemap 打开后每次 sync 都刷新目录概览。只用 sync --codemap 的话，
+	// 概览这一轮生成，下一轮普通 sync 会按产物所有权把它清掉——
+	// 要长期留着就在这里打开。
+	Codemap bool `yaml:"codemap"`
 }
 
 // DefaultConfig 是 keel init 写出的配置。

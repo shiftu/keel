@@ -1,0 +1,139 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+cd $WORK/tmpl
+exec git init -q
+exec git add -A
+exec git commit -qm 'template v1'
+
+cd $WORK
+mkdir app
+cd app
+exec git init -q
+exec keel init --from $WORK/tmpl --tools claude --no-hooks
+
+# 什么都没动：无变化，退出 0。
+exec keel template update --dry-run
+stdout '无变化'
+
+# 本地演化三处、模板演化三处，只有一处重叠。
+exec sh -c 'echo "本地补的一段" >> .keel/skills/keep/SKILL.md'
+exec sh -c 'echo "本地对共同文件的改动" >> .keel/skills/both/SKILL.md'
+exec sh -c 'rm .keel/skills/gone/SKILL.md'
+
+cd $WORK/tmpl
+exec sh -c 'echo "模板补的一段" >> .keel/skills/ff/SKILL.md'
+exec sh -c 'echo "模板对共同文件的改动" >> .keel/skills/both/SKILL.md'
+exec sh -c 'mkdir -p .keel/skills/brand-new && echo "# 新技能" > .keel/skills/brand-new/SKILL.md'
+exec sh -c 'rm .keel/skills/dropped/SKILL.md'
+exec git add -A
+exec git commit -qm 'template v2'
+
+cd $WORK/app
+
+# dry-run 报得出全部六种处置，且一个字节都不写。
+exec keelrc template update --dry-run
+stdout 'keel-exit=1'
+stdout 'fast-forward     skills/ff/SKILL\.md'
+stdout 'keep-local       skills/keep/SKILL\.md'
+stdout 'conflict         skills/both/SKILL\.md'
+stdout 'add              skills/brand-new/SKILL\.md'
+stdout 'local-deleted    skills/gone/SKILL\.md'
+stdout 'template-deleted skills/dropped/SKILL\.md'
+stdout '--dry-run：什么都没写'
+! exists .keel/skills/brand-new/SKILL.md
+! grep '模板补的一段' .keel/skills/ff/SKILL.md
+
+# 真跑：能快进的快进，冲突的一个都不写，退出码是 1。
+exec keelrc template update
+stdout 'keel-exit=1'
+stderr '1 个文件本地和模板都改过，一个都没写'
+
+# 模板单方面改的 → 快进。
+grep '模板补的一段' .keel/skills/ff/SKILL.md
+# 本地单方面改的 → 保留，模板那版没盖上来。
+grep '本地补的一段' .keel/skills/keep/SKILL.md
+# 两边都改的 → 本地原样，模板那段没进来。这是「模板更新不覆盖本地演化」。
+grep '本地对共同文件的改动' .keel/skills/both/SKILL.md
+! grep '模板对共同文件的改动' .keel/skills/both/SKILL.md
+# 模板新增的 → 写入。
+exists .keel/skills/brand-new/SKILL.md
+# 本地删掉的 → 不写回。
+! exists .keel/skills/gone/SKILL.md
+# 模板删掉的 → 本地保留，keel 不替人删东西。
+exists .keel/skills/dropped/SKILL.md
+
+# 冲突文件的基线没推进：它会一直报到人处理为止。
+exec keelrc template update --dry-run
+stdout 'keel-exit=1'
+stdout 'conflict         skills/both/SKILL\.md'
+# 快进过的那个已经对齐了，不再出现在报告里。
+! stdout 'skills/ff/SKILL\.md'
+
+# status 认得出本地改过哪些，且不联网。
+exec keel template status
+stdout '钉住  [0-9a-f]{40}'
+stdout '本地已改'
+stdout 'skills/both/SKILL\.md'
+stdout '本地已删'
+stdout 'skills/gone/SKILL\.md'
+
+# 把本地改动挪走，冲突就化解：退出 0，那个文件不再报。
+exec sh -c 'cp $WORK/tmpl/.keel/skills/both/SKILL.md .keel/skills/both/SKILL.md'
+exec keelrc template update
+stdout 'keel-exit=0'
+! stdout 'conflict'
+! stdout 'skills/both/SKILL\.md'
+
+# 本地删的和模板删的会一直如实报告——keel 两边都不替人做主。退出码仍是 0。
+stdout 'local-deleted    skills/gone/SKILL\.md'
+stdout 'template-deleted skills/dropped/SKILL\.md'
+
+# 没导入过模板的仓库如实报错，不假装有个空模板。
+cd $WORK
+mkdir bare
+cd bare
+exec git init -q
+exec keel init --tools claude --no-hooks
+exec keelrc template status
+stdout 'keel-exit=1'
+stderr '没有从模板导入过'
+
+-- tmpl/.keel/keel.yaml --
+version: 1
+tools:
+  - claude
+workflow:
+  default_level: 1
+  auto_promote: false
+  actions: {}
+  paths: {}
+brief:
+  max_bytes: 16384
+  max_decisions: 8
+  max_notes: 8
+gate:
+  require_trailer: false
+  manifests:
+    - go.mod
+  watch_top_level_dirs: true
+sync:
+  commit_outputs: true
+  skills_mode: copy
+mcp:
+  servers: {}
+knowledge:
+  docs:
+    - README.md
+  exclude: []
+  codemap: false
+-- tmpl/.keel/skills/ff/SKILL.md --
+# 模板会改这个
+-- tmpl/.keel/skills/keep/SKILL.md --
+# 本地会改这个
+-- tmpl/.keel/skills/both/SKILL.md --
+# 两边都会改这个
+-- tmpl/.keel/skills/gone/SKILL.md --
+# 本地会删这个
+-- tmpl/.keel/skills/dropped/SKILL.md --
+# 模板会删这个

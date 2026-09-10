@@ -11,12 +11,14 @@
 ├── intent.md
 ├── keel.yaml
 ├── generated.yaml              产物所有权、adapter schema 版本、生成摘要
+├── template.yaml               模板来源、钉住的 commit、导入基线（只在从模板导入过时存在）
 ├── decisions/D-<uuid>-<slug>.md
 ├── rules/R-<uuid>-<slug>.md
 ├── memory/M-<uuid>-<slug>.md
 ├── evidence/E-<uuid>.md
 ├── knowledge/INDEX.md          生成物，也进 git
-├── knowledge/codemap.md        --codemap 时生成
+├── knowledge/CODEMAP.md        生成物，--codemap 或 knowledge.codemap 时才有
+├── cases/<rule-id>/<expect>/   规则的对照夹具
 ├── skills/<name>/SKILL.md
 ├── cache/                      gitignore：运行缓存、原始日志、接续摘要
 └── .gitignore                  内容：cache/
@@ -303,6 +305,30 @@ files:
 
 `sync`：先完整规划 diff 和冲突，再写入。同名非托管内容 → 冲突。上次生成后被人改过的托管内容 → 冲突。删除源对象仅清理仍与上次生成 digest 相同的产物。机器探测与渲染分离，避免同一源在不同机器得到无意差异。
 
+### 7.1 `template.yaml`
+
+只在从模板导入过的仓库里存在。
+
+```yaml
+schema: 1
+source: https://github.com/org/keel-template.git
+ref: main                       # 用户要的分支/标签，update 默认沿用
+commit: 3f2a…                   # 解析出来的固定版本
+files:
+  - path: skills/team-style/SKILL.md
+    digest: sha256:…            # 导入当时模板那一份的摘要 = 三方比较的基线
+```
+
+`path` 相对 `.keel/`。**基线摘要才是三方比较的真相，`commit` 只是出处**：
+冲突文件的基线不推进，所以「两边都改过」会一直报到人处理为止，不会被下一次 `update` 悄悄抹掉。
+
+`keel.yaml` 比的是配置的**含义**不是字节：两边都解码成配置结构、清掉 `tools`、再用同一个编码器写回。
+`tools` 是本机探测结果，跨仓库不该一致；不清掉的话配置文件会永远停在「本地已改」，再也收不到模板的策略更新。
+
+导入的规则被强制改写成候选形态：`status: candidate`、`evidence: []`、`verifier_digest: ""`、`from: null`、
+`from_template: <source>@<commit>`。理由见 design.md 的 M4 切片——`promote` 不能自我批准，
+装个模板不等于让别人的仓库决定这边执行什么代码。
+
 ## 8. 命令规格
 
 通用：`--json`；`-C <dir>`；`--quiet`。业务退出码 0 / 1 / 2。`keel hook` 的退出码见 §8.12，与业务 CLI 分离。
@@ -321,7 +347,7 @@ keel init [--tools claude,codex] [--from <git-url|dir>] [--no-hooks] [--yes]
 
 1. 找 git 根，没有则退出码 2。
 2. 已有 `.keel/` → 只补缺的文件，不覆盖。
-3. `--from`：复制固定来源版本的模板 `.keel/`（skills、rules、keel.yaml 的 mcp 段、intent 骨架），不复制 decisions / memory / evidence。需要网络时仅这一步访问网络。
+3. `--from <url>[@<ref>]`：导入固定来源版本的模板，详见 §7.1。导入面是 `keel.yaml`、`skills/**`、`rules/*.md`、`cases/**`；**不导入** `decisions/` `memory/` `evidence/` `intent.md`。规则一律落成 `candidate`。这一步和 `keel template update` 是仅有的两个访问网络的入口。已经导入过模板的仓库再给 `--from` 报用法错误。
 4. 探测工具二进制；找不到也允许 `--tools` 强制，并在能力报告里标 unknown/unsupported。
 5. 写三个内置 skill。
 6. 安装 git hooks：**禁止**在任意既有 hook 末尾无条件追加 shell。必须识别 `core.hooksPath`、worktree、现有 hook 管理器（Husky、lefthook、pre-commit 框架等）。支持的组合使用明确调用链；不支持的组合报告具体集成缺口，以非零退出码失败（可 `--no-hooks` 跳过）。hook 脚本见 §9.5 与 `fixtures/git-hook-exit/`。
@@ -335,6 +361,10 @@ keel sync [--codemap] [--dry-run] [--link]
 ```
 
 纯规划 + 写入。`--dry-run` 只打印 diff/冲突。中途失败不留下半份产物（先写临时再替换，或记录恢复）。
+
+`--codemap` 这一轮额外生成 `.keel/knowledge/CODEMAP.md`（§9.9）。它和别的产物一样归 `generated.yaml` 管：
+只给 `--codemap` 的话，下一轮普通 `sync` 会按「源没了就清理」把它删掉。要长期留着，
+在 `keel.yaml` 里写 `knowledge.codemap: true`。
 
 ### 8.3 `keel decide`
 
@@ -589,6 +619,33 @@ keel review [--json]
 
 adapter 必须报告 hook 信任/就绪。未就绪时 hook 入口仍可 exit 0 并在 JSON 里声明 `adapter_status: not_ready`，同时 stderr 指向原生检查；显式 CLI 不受影响。
 
+### 8.13 `keel template`
+
+```
+keel template status [--json]
+keel template update [--to <ref>] [--dry-run] [--json]
+```
+
+`status` **不联网**：它回答的是「本地相对导入基线动过什么」，不是「模板那边有没有新版」。后者归 `update`。
+
+`update` 取模板新版做三方比较，每个文件的处置只由 base / theirs / ours 三者决定：
+
+| ours vs base | theirs vs base | 动作 | 写盘 |
+|---|---|---|---|
+| 同 | 同 | `unchanged` | 否 |
+| 同 | 变 | `fast-forward` | 是 |
+| 变 | 同 | `keep-local` | 否 |
+| 变 | 变 | `conflict` | **否** |
+| 本地已删 | 任意 | `local-deleted` | 否 |
+| 任意 | 模板已删 | `template-deleted` | 否 |
+| 本地没有 | 新增 | `add` | 是 |
+
+冲突不阻塞其他文件：能快进的照常快进。有冲突时退出码 1，其余情况 0。
+`--dry-run` 一个字节都不写。`fast-forward` 写 `keel.yaml` 时保留本地 `tools`。
+
+`local-deleted` 与 `template-deleted` 每次都会如实报告且退出码仍是 0：
+两个方向 keel 都不替人做主——不把删掉的写回去，也不替人删本地的。
+
 ## 9. 产物
 
 ### 9.1 `CLAUDE.md` / `AGENTS.md` 标记块
@@ -682,6 +739,16 @@ fi
 ### 9.8 `.claude/rules/keel.md`
 
 仅软规则 / 非执行摘要。Codex 合并进 AGENTS.md 块。
+
+### 9.9 `.keel/knowledge/CODEMAP.md`
+
+`sync --codemap` 或 `knowledge.codemap: true` 时生成，整文件托管，进 git。
+
+只列目录：每个目录一行，文件数加按条数降序的文件类型。**没有符号、没有调用关系**——
+§10 明确不做 AST 和代码图谱。
+
+输入是 `git ls-files`，不是工作树遍历：没登记的文件不进概览，
+两台机器上生成的必须逐字节一致，否则每次 sync 都是一个假 diff（和 INDEX.md 同一个约束）。
 
 ## 10. 内置技能要点
 

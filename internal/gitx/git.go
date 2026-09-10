@@ -316,3 +316,13 @@ func revertedSHAs(body string) []string {
 	}
 	return out
 }
+
+// TrackedFiles 返回 HEAD 与索引里登记的全部文件。codemap 用它，
+// 不走工作树遍历：只列 git 认的文件，两台机器结果才一样。
+func (r *Repo) TrackedFiles() ([]string, error) {
+	out, err := r.git("ls-files", "-z")
+	if err != nil {
+		return nil, err
+	}
+	return splitZ(out), nil
+}

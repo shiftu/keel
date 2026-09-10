@@ -68,7 +68,7 @@ make check                   # gofmt + go vet + go test ./...
 
 ## 状态
 
-M0（协议）、M1（统一底座）、M2（可信记忆）与 M3（受控进化）已实现，`go test ./...` 全绿。
+M0（协议）、M1（统一底座）、M2（可信记忆）、M3（受控进化）与 M4（复用与扩展）已实现，`go test ./...` 全绿。
 
 - M2：证据只能由 `keel verify` 真的跑完一次验证器产生；记忆的 verified/disputed/过期由证据推导，
   `check` 只报告不改写；worktree 级任务接续摘要；`knowledge/INDEX.md`。
@@ -76,8 +76,12 @@ M0（协议）、M1（统一底座）、M2（可信记忆）与 M3（受控进�
   `keel retire` 撤回时保留原因与失败历史；规则按 scope 与变更集求交后才执行，
   Stop 与 review 一律不执行规则；`keel review` 给确定性的学习候选簇。
 
-M4（模板导入、`--codemap`、更多适配器）未做。技能版本与对照评估一并后置到 M4——
-它要求宿主在固定任务集上执行任务，在那套基础设施存在之前做，只会给出没有验证支撑的可信度。
+- M4：`keel init --from <git-url>[@<ref>]` 把模板仓库的 `.keel/` 可复用部分导入并把来源钉在一个 commit 上；
+  `keel template update` 用三方比较更新，两边都改过的文件一个字节都不写；`sync --codemap` 出目录概览。
+  导入的规则一律落成 candidate——模板给的是建议，要生效仍得在本地 `keel decide` 记依据、`keel promote` 跑对照验证。
+
+更多适配器（claude / codex 之外）未做。技能的对照评估继续后置：它要求宿主在固定任务集上执行任务，
+在那套基础设施存在之前做，只会给出没有验证支撑的可信度；M4 只把技能的**版本**定义成模板钉住的那个 commit。
 设计见 [docs/design/design.md](docs/design/design.md)，
 格式与命令规格见 [docs/design/formats.md](docs/design/formats.md)，
 审查原文见 [docs/design/architecture-review.md](docs/design/architecture-review.md)。

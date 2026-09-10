@@ -1,0 +1,53 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude --no-hooks
+
+# 默认不生成：目录概览是可选的，不是每个仓库都要。
+! exists .keel/knowledge/CODEMAP.md
+
+exec git add -A
+exec git commit -qm 'chore: init'
+
+exec keel sync --codemap
+stdout 'create    \.keel/knowledge/CODEMAP\.md'
+grep '# 目录概览' .keel/knowledge/CODEMAP.md
+grep '\| internal/store \| 2 \|' .keel/knowledge/CODEMAP.md
+grep '\| cmd/app \| 1 \|' .keel/knowledge/CODEMAP.md
+# 只列目录，不列符号——§10 明确不做 AST 和调用图。
+! grep 'func ' .keel/knowledge/CODEMAP.md
+! grep 'main.go' .keel/knowledge/CODEMAP.md
+
+# 不遍历工作树：没 git add 的文件不进概览，两台机器结果才一样。
+exec sh -c 'mkdir -p untracked && echo x > untracked/scratch.go'
+exec keel sync --codemap
+! grep 'untracked' .keel/knowledge/CODEMAP.md
+
+# 内容只来自 git 认的文件，没有本机路径或生成时间：重复 sync 无差异。
+exec sh -c 'cp .keel/knowledge/CODEMAP.md $WORK/first.md'
+exec keel sync --codemap
+exec cmp .keel/knowledge/CODEMAP.md $WORK/first.md
+
+# 概览归 keel 所有：只用 --codemap 的话，下一轮普通 sync 会按产物所有权清掉它。
+exec keel sync
+stdout 'delete    \.keel/knowledge/CODEMAP\.md'
+! exists .keel/knowledge/CODEMAP.md
+
+# 要长期留着就在配置里打开。
+exec sh -c 'sed "s/codemap: false/codemap: true/" .keel/keel.yaml > tmp.yaml && mv tmp.yaml .keel/keel.yaml'
+exec keel sync
+exists .keel/knowledge/CODEMAP.md
+exec keel sync
+exists .keel/knowledge/CODEMAP.md
+
+-- cmd/app/main.go --
+package main
+
+func main() {}
+-- internal/store/store.go --
+package store
+-- internal/store/id.go --
+package store
+-- README.md --
+# 示例仓库

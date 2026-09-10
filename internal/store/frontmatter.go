@@ -104,3 +104,9 @@ func encodeFrontmatter(v any, body string) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// SplitFrontmatter / DecodeFrontmatter / EncodeFrontmatter 暴露给需要改写既有对象文件的
+// 调用方（模板导入）。格式归 store，改写策略归调用方。
+func SplitFrontmatter(data []byte) (fm []byte, body string, err error) { return splitFrontmatter(data) }
+func DecodeFrontmatter(fm []byte, out any) error                       { return decodeFrontmatter(fm, out) }
+func EncodeFrontmatter(v any, body string) ([]byte, error)             { return encodeFrontmatter(v, body) }
