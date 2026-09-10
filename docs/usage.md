@@ -7,12 +7,36 @@
 
 ## 安装
 
+macOS / Linux：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/shiftu/keel/main/install.sh | bash
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/shiftu/keel/main/install.ps1 | iex
+```
+
+脚本把单个二进制放进 `~/.local/bin`（Windows 是 `%LOCALAPPDATA%\keel`，并自动加进用户 PATH）。
+换地方用 `KEEL_INSTALL_DIR=/usr/local/bin`，装指定版本用 `KEEL_VERSION=v0.1.0`。
+也可以到 [Releases](https://github.com/shiftu/keel/releases) 直接下载，没有任何运行时依赖。
+
+有 Go 的话：`go install github.com/shiftu/keel/cmd/keel@latest`。
+
+从源码构建（需要 Go 1.27+）：
+
 ```sh
 git clone https://github.com/shiftu/keel && cd keel
 make build            # 产出 ./keel
+make install          # 装到 $KEEL_INSTALL_DIR，默认 ~/.local/bin
 ```
 
-把 `keel` 放进 PATH。git hook 里用的是 `command -v keel`，不在 PATH 里就自动放行。
+**装完确认 `command -v keel` 找得到它。** git hook 里用的是 `command -v keel`，
+不在 PATH 里就自动放行 —— 这是为了不拦住没装 keel 的同事，代价是你自己也会被静默跳过。
+
+发版流程见 [release.md](release.md)。
 
 ## 快速上手
 

@@ -20,8 +20,54 @@ keel brief --task "…" --path <路径>           任务相关的上下文包
 keel check --target index                    验证真正要提交的内容
 ```
 
-安装、上手和每个命令的用法见 [docs/usage.md](docs/usage.md)。
+## 安装
 
-状态：M0（协议）与 M1（统一底座）已实现，`go test ./...` 全绿；M2 起的证据、任务接续与受控进化未做。设计见 [docs/design/design.md](docs/design/design.md)，
+**macOS / Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shiftu/keel/main/install.sh | bash
+```
+
+**Windows（PowerShell）**
+
+```powershell
+irm https://raw.githubusercontent.com/shiftu/keel/main/install.ps1 | iex
+```
+
+或者到 [Releases](https://github.com/shiftu/keel/releases) 下载对应系统的单个可执行文件，放到 PATH 里。没有任何运行时依赖。
+
+有 Go 的话：`go install github.com/shiftu/keel/cmd/keel@latest`
+
+装完确认一下 `command -v keel` 能找到它 —— keel 装的 git hook 就是靠这个找二进制的，
+不在 PATH 里，hook 会静默放行而不是报错。
+
+## 上手
+
+```bash
+cd <你的仓库>
+keel init                    # 建 .keel/、探测工具、装 git hooks、生成工具文件
+```
+
+每个命令的用法、配置项和 CI 用法见 [docs/usage.md](docs/usage.md)。
+
+## 从源码构建
+
+```bash
+git clone https://github.com/shiftu/keel && cd keel
+make build                   # 产出 ./keel
+make install                 # 装到 ~/.local/bin（改 KEEL_INSTALL_DIR 换地方）
+make check                   # gofmt + go vet + go test ./...
+```
+
+需要 Go 1.27+。发版流程见 [docs/release.md](docs/release.md)。
+
+## 状态
+
+M0（协议）与 M1（统一底座）已实现，`go test ./...` 全绿；M2 起的证据、任务接续与受控进化未做。
+设计见 [docs/design/design.md](docs/design/design.md)，
 格式与命令规格见 [docs/design/formats.md](docs/design/formats.md)，
 审查原文见 [docs/design/architecture-review.md](docs/design/architecture-review.md)。
+
+## License
+
+MIT，见 [LICENSE](LICENSE)。
