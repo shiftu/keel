@@ -10,7 +10,7 @@ files:
     adapter: codex
   - path: .agents/skills/keel-learn/SKILL.md
     owned: '*'
-    digest: sha256:ebe89d3d8593e7320b1b45e6292da595f47cf3d715caeeccc36b313ec17071d8
+    digest: sha256:f88afb1e48669106102dd7761797c0abc89b28facc9353a96538781eaef9ac49
     source: .keel/skills/keel-learn/SKILL.md
     adapter: codex
   - path: .agents/skills/keel-review/SKILL.md
@@ -30,7 +30,7 @@ files:
     adapter: claude
   - path: .claude/skills/keel-learn/SKILL.md
     owned: '*'
-    digest: sha256:ebe89d3d8593e7320b1b45e6292da595f47cf3d715caeeccc36b313ec17071d8
+    digest: sha256:f88afb1e48669106102dd7761797c0abc89b28facc9353a96538781eaef9ac49
     source: .keel/skills/keel-learn/SKILL.md
     adapter: claude
   - path: .claude/skills/keel-review/SKILL.md
@@ -43,11 +43,14 @@ files:
     digest: sha256:82d6081754178db6fd8ff775be16f803d4d250f80d4f0c1cb63beb3f5cb67c41
     owned_json: '{"SessionStart":["{\"hooks\":[{\"command\":\"keel hook codex session-start\",\"type\":\"command\"}]}"],"Stop":["{\"hooks\":[{\"command\":\"keel hook codex stop\",\"type\":\"command\"}]}"]}'
     adapter: codex
+  - path: .keel/knowledge/INDEX.md
+    owned: '*'
+    digest: sha256:a91ff02f6533963ed5f471fadefca63ff4bc6331ca8a6986f025da0276cdb6d7
   - path: AGENTS.md
     owned: keel:begin..keel:end
-    digest: sha256:506938ddb6681b46456756c26800620be750d511ee08c22a92cb743e59c2f166
+    digest: sha256:7e3fb27cf6a4dd0c71dfbc792ccf0dd4190f16cf9a8600eb1283a27f498b948f
     adapter: codex
   - path: CLAUDE.md
     owned: keel:begin..keel:end
-    digest: sha256:506938ddb6681b46456756c26800620be750d511ee08c22a92cb743e59c2f166
+    digest: sha256:7e3fb27cf6a4dd0c71dfbc792ccf0dd4190f16cf9a8600eb1283a27f498b948f
     adapter: claude

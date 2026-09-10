@@ -13,12 +13,12 @@ const maxNoteLines = 20
 func cmdNote(e *env, args []string) error {
 	fs := newFlagSet("note")
 	_ = commonFlags(fs, e)
-	tag := fs.String("tag", "", "标签，逗号分隔")
-	path := fs.String("path", "", "相关路径，逗号分隔")
+	tag := listFlag(fs, "tag", "标签，可重复或逗号分隔")
+	path := listFlag(fs, "path", "相关路径，可重复或逗号分隔")
 	kind := fs.String("kind", string(store.MemKindGotcha), "gotcha | fact | pointer | counterexample")
 	by := fs.String("by", "human", "作者声明，如 agent:codex")
 	body := fs.String("body", "", "正文来源：- 表示标准输入，否则为文件路径")
-	condition := fs.String("condition", "", "适用条件，形如 environment=仅本地盘，逗号分隔")
+	condition := listFlag(fs, "condition", "适用条件，形如 environment=仅本地盘，可重复或逗号分隔")
 
 	rest, err := parseArgs(fs, args)
 	if err != nil {
@@ -52,7 +52,7 @@ func cmdNote(e *env, args []string) error {
 			n, maxNoteLines)
 	}
 
-	tags := splitList(*tag)
+	tags := []string(*tag)
 	if len(tags) == 0 {
 		return usagef("note 需要 --tag")
 	}
@@ -60,7 +60,7 @@ func cmdNote(e *env, args []string) error {
 	if !store.ValidMemoryKind(k) {
 		return usagef("--kind %q 非法（应为 gotcha/fact/pointer/counterexample）", *kind)
 	}
-	conds, err := parseConditions(*condition)
+	conds, err := parseConditions([]string(*condition))
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func cmdNote(e *env, args []string) error {
 		Status:      store.MemCandidate,
 		Summary:     summary,
 		Tags:        tags,
-		Scope:       splitList(*path),
+		Scope:       []string(*path),
 		Conditions:  conds,
 		Evidence:    []store.ID{},
 		DerivedFrom: []store.ID{},
@@ -117,8 +117,7 @@ func firstLine(s string) string {
 	return line
 }
 
-func parseConditions(spec string) (map[string]string, error) {
-	items := splitList(spec)
+func parseConditions(items []string) (map[string]string, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}

@@ -1,0 +1,61 @@
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+# 上限是 1 时，brief 要说清先例有没有跑出来的证据。手写的状态不算。
+exec keel brief --path src/main.go
+stdout '无验证证据'
+stdout '这些先例都没有跑出来的证据'
+
+# 决策只追加证据，不改状态：proven 是人的判断，不是跑通一条命令的自动结果。
+exec keel verify D-44444444 -- grep -q hello src/a.txt
+stderr '状态不变，只追加了证据'
+
+exec sh -c 'cat .keel/decisions/D-44444444*.md'
+stdout 'status: accepted'
+! stdout 'status: proven'
+stdout 'evidence:'
+stdout 'E-'
+
+# 有了证据，先例才算「验证过的做法」。
+exec keel brief --path src/main.go
+stdout '有验证证据'
+! stdout '这些先例都没有跑出来的证据'
+
+-- .keel/keel.yaml --
+version: 1
+-- src/a.txt --
+hello
+-- src/main.go --
+package main
+-- .keel/decisions/D-44444444-4444-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: D-44444444-4444-4333-8444-555555555555
+title: src 下只放单一入口
+status: accepted
+date: 2026-09-10
+by: human
+tags: [layout]
+scope: ["src/**"]
+supersedes: []
+superseded_by: []
+rule_migration: []
+confidence: null
+review_after: null
+evidence: []
+---
+## 背景
+
+src 下曾经有两个入口。
+
+## 决定
+
+只保留 main.go。
+
+## 备选与理由
+
+保留两个入口会让构建脚本分叉。
+
+## 后果与验证方式
+
+grep 能在 src/a.txt 里找到 hello 就算通过。

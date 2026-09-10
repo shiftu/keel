@@ -2,8 +2,8 @@
 
 对应设计：[design.md](design/design.md)。字段与命令规格：[formats.md](design/formats.md)。
 
-当前实现到 M1：`init` / `sync` / `decide` / `why` / `note` / `check` / `brief` / `hook` / `version` 可用；
-`review` 属于 M3，会明确报「尚未实现」。
+当前实现到 M2：`init` / `sync` / `decide` / `why` / `note` / `verify` / `task` / `check` / `brief` /
+`hook` / `version` 可用；`review` 属于 M3，会明确报「尚未实现」。
 
 ## 安装
 
@@ -60,14 +60,22 @@ Codex 侧还要走一次原生项目信任流程，所以这两项报 `unknown` 
 ## 一次会话里的顺序
 
 ```
-改代码前     keel why --path internal/store/db.go
 接任务时     keel brief --task "给存储层加缓存" --path internal/store/
+改代码前     keel why --path internal/store/db.go
 做了决策     keel decide "…" --status accepted --body -
 踩了坑       keel note "…" --tag storage
+能验证就验    keel verify M-<短前缀> -- go test ./internal/store/...
+要交接了     keel task set --goal "…" --done "…" --next "…"
 提交前       keel check --target index      （pre-commit 会自动跑）
 ```
 
+`brief` 放在最前面：它把接续摘要、工作流上限、适用先例和相关材料一次给全。
+
 ## 命令
+
+列表选项（`--tag` / `--scope` / `--path` / `--condition` / `--rule-migration`）**既能重复给也能逗号分隔**：
+`--tag a --tag b` 与 `--tag a,b` 等价。重复给不会静默只留最后一个。
+
 
 ### `keel init`
 
@@ -103,7 +111,7 @@ JSON 里它写过的那几条 hook 条目和 MCP 键。块外的内容、你自�
 ### `keel decide`
 
 ```
-keel decide "<标题>" --tag <t> --scope '<glob>' [--status accepted] [--body -]
+keel decide "<标题>" --tag <t>… --scope '<glob>'… [--status accepted] [--body -]
             [--supersedes D-xxx] [--rule-migration R-a:retired] [--by agent:claude]
 ```
 
@@ -127,12 +135,51 @@ keel why [--path <路径>] [--query <关键词>] [--history]
 ### `keel note`
 
 ```
-keel note "<一句话>" --tag <t> [--path f.go] [--kind gotcha|fact|pointer|counterexample]
+keel note "<一句话>" --tag <t>… [--path f.go]… [--kind gotcha|fact|pointer|counterexample]
           [--condition environment=...] [--by agent:claude]
 ```
 
 新记忆一律 `candidate`：可检索，但在有证据之前不会被当成项目规则注入。
 正文超过 20 行会被拒绝——那说明它其实是一次决策。
+
+### `keel verify`
+
+```
+keel verify <M-…|D-…> --rule R-<uuid> [--kind …] [--trust local|ci]
+keel verify <M-…|D-…> -- <命令…>     [--id <验证器名>] [--timeout <秒>]
+```
+
+跑一次验证器，把结果写成 `.keel/evidence/E-<uuid>.md`，再按结果更新被验证的对象。
+
+- 记忆：通过 → `verified` 并写 `verified_at`；失败 → `disputed`。
+- 决策：只追加证据，**不改状态**。`proven` 是人的判断，不是跑通一条命令的自动结果。
+- 验证器跑不起来或超时：照实记进证据，但**不做任何状态转换**——跑不起来既不是通过也不是失败。
+
+`--` 之后的参数原样 exec，不经 shell。退出码约定和规则一样：0 通过、1 发现违规、其余是错误。
+命令本身退出码 0 时 `keel verify` 退 0，否则退 1；无论如何证据都会写下来。
+
+**没有「登记一条我认为它通过了」的入口。** 自述的通过既不能被别人重跑，也不能被撤回。
+
+证据里记两个摘要：`subject_digest` 盯结论本身，`target.content_digest` 盯 scope 覆盖的代码。
+前者对不上 → `memory_status_unsupported`（error，结论改了却还挂着旧证据）；
+后者对不上 → `memory_evidence_stale`（提醒，代码变了，验证结果过期）。
+
+### `keel task`
+
+```
+keel task set --goal "<目标>" [--done "…"]… [--next "…"]… [--failing "…"]… [--ref <ID>]… [--by agent:claude]
+keel task show [--json]
+keel task clear
+```
+
+同一个 worktree 上 Claude 与 Codex 之间的交接。存在 `.keel/cache/task/current.yaml`，**不进 git**。
+
+- `--goal` / `--next` / `--failing` / `--ref` 给了就整体替换，没给保留原值；`--done` 追加。
+- `--ref` 会校验对象存不存在：接不上的引用只会让下一个工具白找一遍。
+- 记录写入时的 HEAD。HEAD 往前走之后，`show` 和 `brief` 会照实说「摘要可能已经落后」。
+- 摘要出现在 `brief` 和 SessionStart 的最前面，并标明它来自本机缓存。
+
+要跨 clone 留下的经验仍然走 `keel note` / `keel decide`。删掉缓存不会撤销任何已生效的知识。
 
 ### `keel check`
 
@@ -219,6 +266,14 @@ keel check --target range --base "$BASE_SHA" --head "$HEAD_SHA" --json
 ```
 
 本地 hook 可以被跳过，也不会随文件自动装到每个 clone。需要合并门禁就靠 CI。
+
+## 知识索引
+
+`keel sync` 生成 `.keel/knowledge/INDEX.md` 并进 git：决策、规则、记忆各一张表，
+记忆那张还带验证时间和证据条数。clone 之后不装 keel 也能读。
+
+它是托管产物，手改会在下次 `sync` 报冲突而不是被默默覆盖。
+内容只来自仓库里的对象，不含本机路径或生成时间——否则两台机器 sync 出来就不一样了。
 
 ## 边界
 

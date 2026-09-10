@@ -1,0 +1,61 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+# M2 验收：换一个工具接着做同一个任务。
+exec git init -q
+exec git add -A
+exec git commit -q -m first
+exec keel init --tools claude,codex
+
+# Claude 记下做到哪了。
+exec keel task set --goal '给存储层加缓存' --done '读完 internal/store' --next '写 LRU' --failing 'go test ./internal/store -run TestCache' --by agent:claude
+stdout '\.keel/cache/task/current\.yaml'
+stderr '不进 git'
+
+# 接续摘要在 cache/ 里，被 .keel/.gitignore 挡住，不会进版本库。
+exec git status --porcelain
+! stdout 'cache/task'
+
+# Codex 的 SessionStart 拿到同一份摘要，包括是谁留下的。
+stdin session-start.json
+exec keel hook codex session-start
+stdout '任务接续'
+stdout '给存储层加缓存'
+stdout '写 LRU'
+stdout 'agent:claude'
+stdout '与当前 HEAD 一致'
+
+# --done 是流水，追加；--next 描述当前状态，整体替换。
+exec keel task set --done '写完 LRU' --next '补 benchmark' --by agent:codex
+exec keel task show
+stdout '读完 internal/store'
+stdout '写完 LRU'
+stdout '补 benchmark'
+! stdout '写 LRU$'
+
+# HEAD 往前走之后照实说明摘要可能落后，不假装还准确。
+exec sh -c 'echo x > x.txt'
+exec git add x.txt
+exec git commit -q -m second
+exec keel task show
+stdout '中间有新提交，摘要可能已经落后'
+
+# 引用必须指向真实存在的对象：接不上的引用只会让下一个工具白找一遍。
+exec keelrc task set --ref M-99999999
+stdout 'keel-exit=2'
+stderr '没有匹配对象'
+
+exec keel task clear
+exec keel task show
+stdout '没有接续摘要'
+
+# 第一次写摘要必须给目标。
+exec keelrc task set --next '随便'
+stdout 'keel-exit=2'
+stderr '--goal'
+
+exec keelrc task nosuch
+stdout 'keel-exit=2'
+
+-- session-start.json --
+{"session_id":"s1","hook_event_name":"SessionStart","turn_id":"t1"}

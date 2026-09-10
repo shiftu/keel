@@ -1,0 +1,107 @@
+[!unix] skip '夹具用 sh'
+
+# 三种推导一次看全：证据撑不住、复查到期、反例与被反驳的结论并存。
+exec keelrc check
+stdout 'keel-exit=1'
+
+# 有证据但对不上当前内容：error，不是提醒。
+# 文件说了算、证据撑不住，等于把未验证的经验当项目规则用。
+stdout 'memory_status_unsupported'
+stdout 'memory_review_due'
+stdout 'memory_conflict'
+
+# check 只推导不改写：文件里的 status 一个都没动。
+exec sh -c 'grep -h "^status:" .keel/memory/*.md'
+stdout 'status: verified'
+stdout 'status: candidate'
+
+# 空证据的 verified 在加载期就被挡掉，根本进不了库。
+exec sh -c 'cp .keel/memory/M-11111111-2222-4333-8444-555555555555-a.md bad.txt'
+exec sh -c 'sed "s/^evidence:.*/evidence: []/" bad.txt > .keel/memory/M-11111111-2222-4333-8444-555555555555-a.md'
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'frontmatter_invalid'
+stdout 'status verified 要求 evidence 非空'
+
+-- .keel/keel.yaml --
+version: 1
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-a.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: verified
+summary: 自称已验证，但证据是别的内容留下的
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: [E-44444444-4444-4333-8444-555555555555]
+derived_from: []
+supersedes: []
+verified_at: 2026-01-01
+review_after: 2099-01-01
+by: human
+date: 2026-01-01
+---
+这条自称已验证。
+-- .keel/memory/M-22222222-2222-4333-8444-555555555555-b.md --
+---
+schema: 1
+id: M-22222222-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 复查日期已经过了
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2020-01-01
+by: human
+date: 2020-01-01
+---
+这条早就该复查了。
+-- .keel/memory/M-33333333-3333-4333-8444-555555555555-c.md --
+---
+schema: 1
+id: M-33333333-3333-4333-8444-555555555555
+kind: counterexample
+status: candidate
+summary: 反驳第一条
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: [M-11111111-2222-4333-8444-555555555555]
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: human
+date: 2026-09-10
+---
+第一条在这个场景下不成立。
+-- .keel/evidence/E-44444444-4444-4333-8444-555555555555.md --
+---
+schema: 1
+id: E-44444444-4444-4333-8444-555555555555
+subject: M-11111111-2222-4333-8444-555555555555
+subject_digest: sha256:0000
+kind: regression-test
+trust: local
+target:
+  commit: ""
+  content_digest: ""
+  dirty_inputs: []
+verifier:
+  id: seed
+  definition_digest: sha256:0000
+  command: ["true"]
+result: pass
+observed_at: 2026-01-01T00:00:00Z
+producer: seed
+---
+这条证据验的是当时的另一份正文。

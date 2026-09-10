@@ -41,6 +41,8 @@ func commands() []command {
 		{"why", "查某路径或主题下的决策、规则、记忆", cmdWhy},
 		{"note", "记一条候选记忆", cmdNote},
 		{"check", "按 target 验证对象、规则与语义变化", cmdCheck},
+		{"verify", "跑一次验证器，把结果记成证据", cmdVerify},
+		{"task", "任务接续摘要：set / show / clear", cmdTask},
 		{"brief", "输出任务相关的上下文包", cmdBrief},
 		{"review", "进化报告：到期、候选、工作流建议", cmdReview},
 		{"hook", "内部：宿主 hook 事件编解码", cmdHook},

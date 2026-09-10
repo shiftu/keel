@@ -1,0 +1,77 @@
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+# 验证器失败：verified 转 disputed，退出码 1，证据照样写下来。
+exec keelrc verify M-11111111 -- grep -q nomatch src/a.txt
+stdout 'keel-exit=1'
+stderr 'verified → disputed'
+
+exec sh -c 'cat .keel/memory/M-11111111*.md'
+stdout 'status: disputed'
+exec sh -c 'cat .keel/evidence/E-*.md'
+stdout 'result: fail'
+
+# 验证器根本跑不起来：既不是通过也不是失败，所以不做任何状态转换。
+exec keelrc verify M-11111111 -- keel-no-such-verifier
+stdout 'keel-exit=1'
+stderr '跑不起来既不是通过也不是失败'
+stderr '状态不变'
+
+exec sh -c 'cat .keel/memory/M-11111111*.md'
+stdout 'status: disputed'
+exec sh -c 'grep -c "result: error" .keel/evidence/*.md'
+stdout '1'
+
+# 没有验证器就没有证据：不接受自述。
+exec keelrc verify M-11111111
+stdout 'keel-exit=2'
+stderr '我认为它通过了'
+
+# 两个验证器同时给也不行：证据说不清是谁验的。
+exec keelrc verify M-11111111 --rule R-22222222-2222-4333-8444-555555555555 -- grep -q hello src/a.txt
+stdout 'keel-exit=2'
+
+-- .keel/keel.yaml --
+version: 1
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: verified
+summary: a.txt 里必须留着 nomatch
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: [E-33333333-3333-4333-8444-555555555555]
+derived_from: []
+supersedes: []
+verified_at: 2026-09-10
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+a.txt 里必须留着 nomatch。
+-- .keel/evidence/E-33333333-3333-4333-8444-555555555555.md --
+---
+schema: 1
+id: E-33333333-3333-4333-8444-555555555555
+subject: M-11111111-2222-4333-8444-555555555555
+subject_digest: sha256:0000
+kind: regression-test
+trust: local
+target:
+  commit: ""
+  content_digest: ""
+  dirty_inputs: []
+verifier:
+  id: seed
+  definition_digest: sha256:0000
+  command: ["true"]
+result: pass
+observed_at: 2026-09-10T00:00:00Z
+producer: seed
+---
+夹具预置的旧证据。

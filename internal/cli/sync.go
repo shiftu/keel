@@ -56,7 +56,12 @@ func runSync(e *env, st *store.Store, dryRun, verbose bool) error {
 		in.Skills = os.DirFS(st.SkillsDir())
 	}
 
-	var arts []render.Artifact
+	// 知识索引不属于任何一家工具：clone 之后不装 keel 也能读。
+	arts := []render.Artifact{{
+		Path:    render.KnowledgeIndexPath,
+		Mode:    render.ModeWholeFile,
+		Content: render.KnowledgeIndex(set),
+	}}
 	schema := map[string]string{}
 	for _, name := range cfg.Tools {
 		a, ok := adapter.ByName(name)

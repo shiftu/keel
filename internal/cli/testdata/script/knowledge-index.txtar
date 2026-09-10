@@ -1,0 +1,54 @@
+[!exec:git] skip '需要 git'
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# 索引进 git：clone 之后不装 keel 也能读。
+exec sh -c 'cat .keel/knowledge/INDEX.md'
+stdout '# 知识索引'
+stdout 'candidate'
+stdout '缓存目录必须在本地盘'
+stdout '| 无 |'
+
+# 验证之后，索引里能看出这条背后有几份证据、对不对得上。
+exec keel verify M-11111111 -- grep -q hello src/a.txt
+exec keel sync
+exec sh -c 'cat .keel/knowledge/INDEX.md'
+stdout 'verified'
+stdout '1 条（有对得上的 pass）'
+
+# 索引只依赖仓库里的对象：同样的输入连续 sync 不产生差异。
+exec keel sync
+stdout '无变化'
+
+# 它是托管产物：手改会报冲突，而不是被默默覆盖。
+exec sh -c 'printf "\n手写的一行\n" >> .keel/knowledge/INDEX.md'
+exec keelrc sync
+stdout 'keel-exit=1'
+stderr '被改过'
+exec sh -c 'grep -c "手写的一行" .keel/knowledge/INDEX.md'
+stdout '1'
+
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 缓存目录必须在本地盘
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+缓存目录必须在本地盘。

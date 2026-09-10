@@ -21,6 +21,7 @@ func Objects(st *store.Store, cfg store.Config, set *store.Set, res *Result) {
 	ruleBasis(set, res)
 	scopeOverlap(set, res)
 	staleScope(st, set, res)
+	memoryLifecycle(st, set, res)
 	configPolicy(st, cfg, res)
 }
 
@@ -262,6 +263,12 @@ func staleScope(st *store.Store, set *store.Set, res *Result) {
 	for _, r := range set.Rules {
 		if r.Status == store.RuleActive {
 			report(r.SourcePath(), r.ID.String(), r.Scope)
+		}
+	}
+	for _, m := range set.Memories {
+		// archived 的记忆本来就不再声称适用，scope 失配不必再提醒。
+		if m.Status != store.MemArchived {
+			report(m.SourcePath(), m.ID.String(), m.Scope)
 		}
 	}
 }

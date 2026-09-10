@@ -1,0 +1,51 @@
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+exec keel verify M-11111111 -- grep -q hello src/a.txt
+stderr 'candidate → verified'
+exec keel check
+stdout '通过'
+
+# 结论没变、代码变了：验证结果过期。这是提醒（warn），不是错误——
+# 旧结论未必错，但不能再当成「刚验证过」呈现。
+exec sh -c 'printf "hello\nplus one more line\n" > src/a.txt'
+exec keelrc check
+stdout 'keel-exit=0'
+stdout 'memory_evidence_stale'
+stdout '通过（1 条提醒）'
+
+# brief 里它带上「证据已过期」：路径命中仍然是它被选中的原因，
+# 但状态和理由都必须写明这条已经不算「刚验证过」。
+exec keel brief --path src/a.txt
+stdout 'verified·证据已过期'
+stdout '已验证但证据过期：'
+
+# 重新验证一次就恢复。
+exec keel verify M-11111111 -- grep -q hello src/a.txt
+exec keel check
+stdout '通过'
+! stdout 'memory_evidence_stale'
+
+-- .keel/keel.yaml --
+version: 1
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: a.txt 里必须留着 hello
+tags: [storage]
+scope: ["src/**"]
+conditions: {environment: 仅本地盘}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+a.txt 里必须留着 hello。

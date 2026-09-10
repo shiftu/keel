@@ -7,6 +7,17 @@ exec keel decide '用 SQLite 而不是 Postgres' --tag db,storage --scope 'inter
 stdout '\.keel/decisions/D-'
 stdout 'Decision: D-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 
+# 列表选项重复给要全部收下。普通 String flag 会静默只留最后一个，
+# 那正是 keel 在别处拒绝的静默丢弃。
+exec keel decide '两种写法等价' --tag a --tag b,c --scope 'x/**' --scope 'y/**'
+exec sh -c 'cat .keel/decisions/*两种写法等价*.md'
+stdout '  - a'
+stdout '  - b'
+stdout '  - c'
+stdout '  - x/\*\*'
+stdout '  - y/\*\*'
+exec sh -c 'rm .keel/decisions/*两种写法等价*.md'
+
 # 默认状态是 proposed：空模板不会被当成已定的结论。
 exec sh -c 'cat .keel/decisions/*.md'
 stdout 'schema: 1'

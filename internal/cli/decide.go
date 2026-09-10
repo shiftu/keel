@@ -22,10 +22,10 @@ const decisionTemplate = `## 背景
 func cmdDecide(e *env, args []string) error {
 	fs := newFlagSet("decide")
 	_ = commonFlags(fs, e)
-	tag := fs.String("tag", "", "标签，逗号分隔（只服务检索，不决定风险）")
-	scope := fs.String("scope", "", "管辖路径 glob，逗号分隔")
+	tag := listFlag(fs, "tag", "标签，可重复或逗号分隔（只服务检索，不决定风险）")
+	scope := listFlag(fs, "scope", "管辖路径 glob，可重复或逗号分隔")
 	supersedes := fs.String("supersedes", "", "替代的决策 ID")
-	ruleMigration := fs.String("rule-migration", "", "规则迁移，形如 R-xxx:R-yyy 或 R-xxx:retired，逗号分隔")
+	ruleMigration := listFlag(fs, "rule-migration", "规则迁移，形如 R-xxx:R-yyy 或 R-xxx:retired，可重复或逗号分隔")
 	confidence := fs.Float64("confidence", -1, "作者自评 0-1（不授予可信状态）")
 	by := fs.String("by", "human", "作者声明，如 agent:claude")
 	status := fs.String("status", string(store.DecProposed), "proposed 或 accepted")
@@ -43,8 +43,8 @@ func cmdDecide(e *env, args []string) error {
 	if title == "" {
 		return usagef("标题不能为空")
 	}
-	tags := splitList(*tag)
-	scopes := splitList(*scope)
+	tags := []string(*tag)
+	scopes := []string(*scope)
 	if len(tags) == 0 {
 		return usagef("decide 需要 --tag")
 	}
@@ -102,7 +102,7 @@ func cmdDecide(e *env, args []string) error {
 		supersedesIDs = []store.ID{id}
 	}
 
-	migrations, err := parseRuleMigrations(*ruleMigration, known)
+	migrations, err := parseRuleMigrations([]string(*ruleMigration), known)
 	if err != nil {
 		return err
 	}
@@ -221,8 +221,7 @@ func requireRuleMigration(set *store.Set, old *store.Decision, migrations []stor
 		strings.SplitN(pending[0], "（", 2)[0], strings.SplitN(pending[0], "（", 2)[0])
 }
 
-func parseRuleMigrations(spec string, known []store.ID) ([]store.RuleMigration, error) {
-	items := splitList(spec)
+func parseRuleMigrations(items []string, known []store.ID) ([]store.RuleMigration, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}

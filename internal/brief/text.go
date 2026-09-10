@@ -2,6 +2,7 @@ package brief
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -15,9 +16,17 @@ func (b *Brief) Text(maxBytes int) string {
 		fmt.Fprintf(&sb, "  受这些约束限制：%s\n", strings.Join(b.Workflow.Binding, "；"))
 	}
 	sb.WriteString("  上限由项目策略给出，不看 tag；扩大上限走配置审查，不按记录条数自动升级。\n")
+	for _, p := range b.Precedents {
+		evidence := "无验证证据"
+		if p.Verified {
+			evidence = "有验证证据"
+		}
+		fmt.Fprintf(&sb, "  适用先例：%s [%s·%s] %s\n", shortID(p.ID), p.Status, evidence, p.Title)
+	}
 	if b.HasIntent {
 		sb.WriteString("\n项目目标与约束见 .keel/intent.md\n")
 	}
+	taskSection(&sb, b.Task)
 
 	section(&sb, "相关决策", b.Decisions)
 	section(&sb, "生效中的规则", b.Rules)
@@ -45,15 +54,64 @@ func (b *Brief) Text(maxBytes int) string {
 	return truncateUTF8(out, maxBytes)
 }
 
+// taskSection 放在最前面：接手的人先要知道上一段做到哪了。
+func taskSection(sb *strings.Builder, t *TaskBlock) {
+	if t == nil {
+		return
+	}
+	fmt.Fprintf(sb, "\n## 任务接续（本机缓存，不进 git，跨 clone 不保证）\n")
+	fmt.Fprintf(sb, "目标：%s\n", t.Goal)
+	bullets(sb, "已完成", t.Done)
+	bullets(sb, "下一步", t.Next)
+	bullets(sb, "还在失败", t.Failing)
+	bullets(sb, "相关", t.Refs)
+	if t.UpdatedBy != "" {
+		fmt.Fprintf(sb, "更新：%s by %s\n", t.UpdatedAt, t.UpdatedBy)
+	}
+	if t.BaseNote != "" {
+		fmt.Fprintf(sb, "%s\n", t.BaseNote)
+	}
+}
+
+func bullets(sb *strings.Builder, label string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(sb, "%s：\n", label)
+	for _, it := range items {
+		fmt.Fprintf(sb, "  - %s\n", it)
+	}
+}
+
 func section(sb *strings.Builder, title string, items []Item) {
 	if len(items) == 0 {
 		return
 	}
 	fmt.Fprintf(sb, "\n## %s\n", title)
 	for _, it := range items {
+		status := it.Status
+		if it.StatusNote != "" {
+			status += "·" + it.StatusNote
+		}
 		fmt.Fprintf(sb, "- %s [%s] %s\n  %s · %s\n",
-			shortID(it.ID), it.Status, it.Title, it.WhySelected, it.Path)
+			shortID(it.ID), status, it.Title, it.WhySelected, it.Path)
+		// 适用条件不参与打分，但一定原样带出来——判断适不适用是 agent 的活。
+		for _, k := range sortedKeys(it.Conditions) {
+			fmt.Fprintf(sb, "  条件 %s：%s\n", k, it.Conditions[k])
+		}
 	}
+}
+
+func sortedKeys(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func shortID(id string) string {

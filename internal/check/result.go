@@ -71,6 +71,11 @@ const (
 	CodeTrailerNotUsable      = "trailer_not_usable"
 	CodeIndexSnapshotFailed   = "index_snapshot_unavailable"
 	CodeSyncDrift             = "sync_drift"
+
+	CodeMemoryStatusUnsupported = "memory_status_unsupported"
+	CodeMemoryEvidenceStale     = "memory_evidence_stale"
+	CodeMemoryReviewDue         = "memory_review_due"
+	CodeMemoryConflict          = "memory_conflict"
 )
 
 // Finding 是一条检查结论。Code 是契约，Message 只给人看。

@@ -352,6 +352,32 @@ v2 规格是目标形态，不是 M1 的实现清单。M1 只做下表左列；�
   因此 `policy.Precedents` 的 `Verified` 恒为 false，手写 proven 不会提高自决上限——
   这正是审查 P1-04 要的行为。
 
+**M2 实现状态（2026-09-10）：** 上表全部实现并有测试。`Precedents.Verified` 现在接的是真实证据，
+但它**只出现在 brief 的说明里**，不参与上限计算——扩大自决范围仍然只能改配置，
+和 M1 时一样。审查 P1-04 的行为没有因为证据模型上线而松动。
+
+### M2 切片 · 已实现
+
+M2 = 可信记忆。四件事：证据真的被跑出来、记忆有可推导的生死、任务能跨工具接上、检索按任务收敛。
+
+| M2 实现 | M2 不做 |
+|---|---|
+| `keel verify`：跑验证器 → 写 `evidence/E-*.md` → 按状态表转换 subject | 「登记一条我认为它通过了」的自述入口 |
+| 记忆生命周期推导：`memory_status_unsupported` / `_evidence_stale` / `_review_due` / `_conflict` | `check` 自动改写文件里的 `status` |
+| 双 digest：`subject_digest`（结论变没变）+ `target.content_digest`（代码变没变） | 增量摘要与缓存复用 |
+| `keel task set/show/clear`：worktree 级接续摘要，进 brief 与 SessionStart | 跨 clone 接续、跨机器同步 |
+| brief 六档确定性排序 + 先例证据提示 | BM25 / 向量 / 相似度 |
+| `knowledge/INDEX.md` 由 sync 生成并进 git | `--codemap`（M4） |
+| `policy.Precedents.Verified` 接上真实证据 | 因此自动扩大自决上限（永不） |
+
+两条不退让的边界：
+
+1. **证据只能由 keel 真的跑完一次验证器产生。** 没有自述入口。自我确认写进仓库就撤不回来了。
+2. **`check` 只推导不改写。** 状态转换的入口只有 `verify` 和人手工编辑，两者都留在 git diff 里。
+
+`memory_status_unsupported` 定成 error 而不是 warn：文件自称 verified 但证据支持不了，
+等于把未验证的经验当项目规则用——这正是审查 P1「记忆缺少可信生命周期」要挡的。
+
 首批验收场景（实现时必须可观察）：
 
 | 场景 | 必须观察到的结果 |

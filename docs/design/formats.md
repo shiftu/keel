@@ -201,6 +201,28 @@ SQLite WAL 在 NFS 上会锁失败；测试用临时目录必须在本地盘。
 - `verified` 要求 `evidence` 非空且至少一条相关 `pass`（或项目审查记录）。
 - 同一 `derived_from` / 同一错误的重复转述：review 计为一条证据簇，不按条数升级。
 
+状态转换只有两个入口，除此之外 keel 不动文件里的 `status`：
+
+| 入口 | 允许的转换 |
+|---|---|
+| `keel verify` 真的跑了一次验证器 | candidate/disputed → verified（`pass`）；candidate/verified → disputed（`fail`） |
+| 人或 agent 手工编辑文件 | 任意合法转换，但要能过下面的一致性检查 |
+
+`check` 只**推导并报告**，不改文件。推导规则（全部基于已提交的 evidence，不看 cache）：
+
+| finding | 条件 | severity |
+|---|---|---|
+| `memory_status_unsupported` | `verified` 但没有一条 `result: pass` 且 `subject_digest` 等于该记忆当前内容摘要的证据 | error |
+| `memory_evidence_stale` | `verified` 且证据存在，但证据的 `target.content_digest` 不等于当前 scope 内容摘要 | warn |
+| `memory_review_due` | `review_after` 早于今天，且状态是 candidate / verified | warn |
+| `memory_conflict` | 某条 `counterexample` 的 `derived_from` 指向一条仍是 `verified` 的记忆 | warn |
+| `object_stale` | scope 在工作树里一个都匹配不上（与决策、规则同一条规则） | warn |
+
+`memory_status_unsupported` 是 error 而不是 warn：文件自称 verified、证据却支持不了它，等于把未验证的经验当成项目规则用。
+改了记忆正文就会让旧证据的 `subject_digest` 对不上——这是有意的，结论变了就要重新验证。
+
+`brief` 与 `why` 展示时必须区分「verified」和「verified（证据已过期）」；后者不作为现行结论呈现。
+
 ## 6. 证据
 
 ```yaml
@@ -225,6 +247,18 @@ producer: keel-check
 
 digest 输入集合排除 `evidence/` 自身与 `cache/`。密钥与不必要的个人信息不得写入摘要。
 
+两个 digest 回答两个不同的问题，都不能省：
+
+- `subject_digest`：**被验证的结论**在验证时的内容摘要。对不上 = 证据说的不是现在这条记忆。
+- `target.content_digest`：**被验证的代码**在验证时的内容摘要（按 subject 的 `scope` 收集，路径排序后逐个摘要）。
+  对不上 = 结论没变，但代码变了，验证结果过期。
+
+`target.commit` 只在工作树干净时填 HEAD；脏工作树填 null 并把纳入摘要的路径列进 `dirty_inputs`。
+不能拿一个脏工作树的结果冒充某个提交的验证。
+
+**证据只能由 keel 真的跑完一次验证器产生**（`keel verify`）。没有「登记一条我认为它通过了」的入口：
+那样的记录既不能被别人重跑，也不能被撤回，等于把自我确认写进仓库。
+
 ## 7. `generated.yaml`
 
 ```yaml
@@ -246,9 +280,13 @@ files:
 
 ## 8. 命令规格
 
-通用：`--json`；`-C <dir>`；`--quiet`。业务退出码 0 / 1 / 2。`keel hook` 的退出码见 §8.9，与业务 CLI 分离。
+通用：`--json`；`-C <dir>`；`--quiet`。业务退出码 0 / 1 / 2。`keel hook` 的退出码见 §8.11，与业务 CLI 分离。
 
 stdin/file 正文：`--body -` 读 stdin 至 EOF；`--body <path>` 读文件。与位置参数同时出现 → 退出码 2。
+
+列表选项（`--tag` / `--scope` / `--path` / `--condition` / `--rule-migration`）既接受重复给也接受逗号分隔，
+两种写法等价且可混用。**重复给必须全部收下**：只留最后一个是静默丢弃，和拒绝未知选项是同一条原则。
+`keel task` 的 `--done` / `--next` / `--failing` 只接受重复给、不拆逗号——那里每一项都是自然语言。
 
 ### 8.1 `keel init`
 
@@ -299,7 +337,47 @@ keel note "<正文>" --tag <t> [--path f.go[,g.go]] [--kind gotcha|fact|pointer|
 
 默认 `status: candidate`。正文超过 20 行拒收（退出码 2），提示走 `decide` 或拆分。`--condition` 写入 `conditions` 适用条件。
 
-### 8.5 `keel why`
+### 8.5 `keel verify`
+
+```
+keel verify <subject-ref> --rule R-<uuid> [--kind check] [--trust local|ci]
+keel verify <subject-ref> -- <argv…>      [--id <verifier-id>] [--kind …] [--trust …] [--timeout <秒>]
+```
+
+subject 是 `M-` 或 `D-` 的完整 ID 或短前缀。二选一给验证器，给了两个报用法错误：
+
+- `--rule`：用某条规则的 `check.argv` 与它的 `timeout_seconds`；verifier id = 规则 ID，
+  `definition_digest` = 规则 argv 与正文的摘要（规则改了，旧证据就认得出来）。
+- `--` 之后的位置参数：显式 argv，原样 exec，不经 shell。verifier id 默认取 argv 摘要前 12 位。
+
+流程：算 subject 摘要 → 收集 subject `scope` 覆盖的内容并算 `target.content_digest` →
+在仓库根跑 argv（沿用 §4 的退出码约定与超时/进程组语义）→ 写 `evidence/E-<uuid>.md` →
+按 §5 的状态转换表更新 subject。
+
+- subject 是记忆：`pass` → verified 并写 `verified_at`；`fail` → disputed。两种情况都把证据 ID 追加进 `evidence`。
+- subject 是决策：只追加证据 ID，**不改状态**。`proven` 是人的判断，不是跑通一条命令的自动结果。
+- 验证器 `error` / `timeout`：照实写进证据，**不做任何状态转换**——跑不起来不是通过，也不是失败。
+- 写证据与改 subject 是一笔：改 subject 失败就删掉刚写的证据文件。
+- 退出码：验证器 pass → 0；fail → 1；error/timeout → 1。证据无论如何都写下来。
+
+### 8.6 `keel task`
+
+任务接续摘要。存在 `.keel/cache/task/current.yaml`，**在 gitignore 里**：
+它是同一个 worktree 上 Claude 与 Codex 之间的交接，不是长期记忆。跨 clone 要留的经验用 `keel note`。
+
+```
+keel task set --goal "<目标>" [--done "<已完成>"]… [--next "<下一步>"]…
+              [--failing "<失败的验证>"]… [--ref <ID>]… [--by agent:claude]
+keel task show [--json]
+keel task clear
+```
+
+- `--goal` / `--next` / `--failing` / `--ref`：给了就整体替换该字段，没给就保留原值。
+- `--done`：追加（它是已完成事项的流水，不是当前状态）。
+- `set` 记录写入时的 HEAD。`show` 与 `brief` 在 HEAD 变了之后照实说明「摘要记录于 <sha>」，不假装还准确。
+- 摘要出现在 `brief` 最前面，并标明它来自本机缓存、跨 clone 不保证。
+
+### 8.7 `keel why`
 
 ```
 keel why [--path <path>] [--query <关键词>] [--history] [--json]
@@ -311,7 +389,7 @@ keel why [--path <path>] [--query <关键词>] [--history] [--json]
 - 默认有效结论；`--history` 含否决与替代，明确标记。
 - 每条输出包含状态、路径、版本/ID、`why_selected`。
 
-### 8.6 `keel check`
+### 8.8 `keel check`
 
 ```
 keel check [--target worktree|index|commit-msg|range] \
@@ -374,11 +452,11 @@ JSON（业务 CLI，**不是**宿主 hook 外形）：
 }
 ```
 
-去重：只抑制重复**反馈**（键见 §8.9），不得把 `fail` 改成 `pass`。Stop 的 unresolved 必须仍出现在随后的 index/range 检查中。
+去重：只抑制重复**反馈**（键见 §8.11），不得把 `fail` 改成 `pass`。Stop 的 unresolved 必须仍出现在随后的 index/range 检查中。
 
 缓存：按代码目标 digest、规则集 digest、策略 digest、keel 版本绑定。缺失或不匹配显示 unknown，不能用旧绿色代替验证。
 
-### 8.7 `keel brief`
+### 8.9 `keel brief`
 
 ```
 keel brief [--task <text>] [--path <p>] [--changed] [--budget <bytes>] [--json]
@@ -386,13 +464,33 @@ keel brief [--task <text>] [--path <p>] [--changed] [--budget <bytes>] [--json]
 
 SessionStart 无任务时只给基础材料（intent 入口、验证命令、查询方法、工作流上限）。agent 理解请求后带 `--task` / `--path` 再查。
 
-选择顺序（确定性）：显式 ID/路径命中 → 适用条件 → 冲突与失败提醒 → 有效证据 → 主题匹配 → 时间；同分按稳定 ID。每条带 `why_selected`、状态、来源路径与版本。候选事实和外部材料作为引用，不提升成执行指令。
+选择顺序（确定性，同分按日期降序再按稳定 ID 升序）：
+
+| 分档 | 命中条件 |
+|---|---|
+| 6 显式 ID | 任务文本里出现了这条的完整 ID 或短前缀 |
+| 5 路径 | `--path` 命中它的 scope |
+| 4 冲突与失败 | 决策 revisit；记忆 disputed 或 verified 但证据已过期；规则依据失效 |
+| 3 有效证据 | 有 `result: pass` 且两个 digest 都对得上的证据 |
+| 2 主题 | 标题词或 tag 出现在 `--task` 文本里 |
+| 1 兜底 | 本仓库的有效对象 |
+
+**「适用条件」不参与打分，而是逐条展示**：`conditions` 是自由文本，判断它适不适用是宿主 agent 的活，
+不是 keel 的。keel 保证有条件的条目一定把条件原样带出来，让 agent 看得见。
+
+每条带 `why_selected`、状态、来源路径。候选事实和外部材料作为引用，不提升成执行指令。
+状态是 `verified` 但证据过期的记忆显示成 `verified（证据已过期）`，不作为现行结论。
+
+工作流上限为 1（有适用先例才自决）时，brief 额外列出适用先例及其**是否有有效证据**。
+没有带证据的先例就明说缺依据——这一条不会因为有几条手写的 `proven` 而改变。
+
+第一段是任务接续摘要（§8.6），有才显示，并标明它来自本机缓存。
 
 UTF-8 字节上限硬约束。超预算显示省略摘要和原文位置，不能静默丢掉。可额外显示 token **估算**，不宣称跨模型精确 token 数。
 
 静态 CLAUDE.md / AGENTS.md **不**内嵌会过期的自主度表；动态状态只从 brief 来。
 
-### 8.8 `keel review`
+### 8.10 `keel review`
 
 ```
 keel review [--json]
@@ -400,13 +498,13 @@ keel review [--json]
 
 输出：到期决策及证据、学习候选（附依据）、工作流建议（**不是**自动新上限）、失效/冲突条目、统计。次数只排审阅优先级。证据来源：已提交 evidence、`git log` revert、硬规则结果。不把 cache-only 计数当跨 clone 事实。
 
-### 8.9 `keel hook <adapter> <event>`
+### 8.11 `keel hook <adapter> <event>`
 
 内部入口。读 stdin 事件，调共享内核，编码宿主输出。
 
 - 正常决策路径：**exit 0 + 合法 JSON**（Claude 与 Codex 均如此编码）。
 - 用法错误、内核崩溃：非 0，stderr 诊断；**不得**输出半截宿主 `decision` 对象。
-- `check --json` 只返回 §8.6 的稳定结果，不返回 Claude/Codex 的 `decision`。
+- `check --json` 只返回 §8.8 的稳定结果，不返回 Claude/Codex 的 `decision`。
 - Codex：按其文档，继续执行用 exit 0 JSON；需要阻断/继续的语义由 adapter 翻译。不得把业务退出码 2 泄漏成「Codex 继续」。
 - Stop：不猜测 commit message。去重键 = repo + worktree + session + turn（若有）+ 信号摘要。第二次相同未解决问题：结束循环、保留 fail、不请求继续。
 
@@ -495,7 +593,14 @@ fi
 
 源 `.keel/skills/<name>/` → 工具目录。`generated.yaml` 记录 digest。用户改过 → 冲突。源删除且目标仍等于上次生成 → 删除；否则保留并报冲突。`.keel-managed` 空文件不再作为唯一所有权证明。
 
-### 9.7 `.claude/rules/keel.md`
+### 9.7 `.keel/knowledge/INDEX.md`
+
+`sync` 生成，整文件托管（`owned: '*'`），**进 git**。它是 clone 之后不装 keel 也能读的入口：
+有效决策、生效规则、记忆按状态分组、每条记忆背后的证据与验证时间。
+
+内容只来自仓库里的对象，不含本机路径、时间戳或探测结果——否则两台机器 sync 出来会不一样。
+
+### 9.8 `.claude/rules/keel.md`
 
 仅软规则 / 非执行摘要。Codex 合并进 AGENTS.md 块。
 

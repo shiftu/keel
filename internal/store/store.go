@@ -278,3 +278,57 @@ func Slugify(title string) string {
 	}
 	return s
 }
+
+// MemoryByID 是 Lookup 的类型化版本。
+func (s *Set) MemoryByID(id ID) (*Memory, bool) {
+	o, ok := s.Lookup(id)
+	if !ok {
+		return nil, false
+	}
+	m, ok := o.(*Memory)
+	return m, ok
+}
+
+// EvidenceFor 返回指向该 subject 的全部证据，按 ID 排序。
+func (s *Set) EvidenceFor(subject ID) []*Evidence {
+	var out []*Evidence
+	for _, e := range s.Evidence {
+		if e.Subject == subject {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID.String() < out[j].ID.String() })
+	return out
+}
+
+// SupportingEvidences 找出「确实支持这条结论现在这个样子」的全部证据：
+// 结果是 pass，且 subject_digest 等于对象当前内容摘要。按观测时间从新到旧。
+//
+// 改了结论正文就会让旧证据对不上——这是有意的：结论变了就要重新验证。
+// 返回全部而不是一条，是因为同一条结论可以被验证多次，
+// 判断「验证有没有过期」必须看最新那次，不能撞上排在前面的老证据。
+func (s *Set) SupportingEvidences(o Object) []*Evidence {
+	want := ObjectDigest(o)
+	var out []*Evidence
+	for _, e := range s.EvidenceFor(o.ObjectID()) {
+		if e.Result == "pass" && e.SubjectDigest == want {
+			out = append(out, e)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].ObservedAt != out[j].ObservedAt {
+			return out[i].ObservedAt > out[j].ObservedAt
+		}
+		return out[i].ID.String() < out[j].ID.String()
+	})
+	return out
+}
+
+// SupportingEvidence 返回最新的一条支持证据。
+func (s *Set) SupportingEvidence(o Object) (*Evidence, bool) {
+	all := s.SupportingEvidences(o)
+	if len(all) == 0 {
+		return nil, false
+	}
+	return all[0], true
+}

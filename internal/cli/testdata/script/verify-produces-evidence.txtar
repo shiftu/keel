@@ -1,0 +1,63 @@
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+# M2 核心：证据只能由 keel 真的跑完一次验证器产生，没有「我认为它通过了」的入口。
+
+exec keel check
+stdout '通过'
+
+# pass → candidate 转 verified，并写下证据。
+exec keel verify M-11111111 -- grep -q hello src/a.txt
+stdout '\.keel/evidence/E-'
+stderr 'candidate → verified'
+
+exec sh -c 'cat .keel/memory/M-11111111*.md'
+stdout 'status: verified'
+stdout 'verified_at:'
+stdout 'M-11111111-2222-4333-8444-555555555555'
+
+# 证据里两个 digest 都要有：一个盯结论、一个盯代码。
+exec sh -c 'cat .keel/evidence/E-*.md'
+stdout 'result: pass'
+stdout 'subject: M-11111111-2222-4333-8444-555555555555'
+stdout 'subject_digest: sha256:'
+stdout 'content_digest: sha256:'
+stdout 'producer: keel-verify'
+
+exec keel check
+stdout '通过'
+
+# brief 里它不再带「候选（未验证）」，而是有证据的现行结论。
+exec keel brief --path src/a.txt
+stdout 'verified'
+! stdout '候选（未验证）'
+
+# 改了结论正文，旧证据的 subject_digest 就对不上：自称 verified 变成 error。
+exec sh -c 'printf "\n后来又补了一句别的意思。\n" >> .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md'
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'memory_status_unsupported'
+
+-- .keel/keel.yaml --
+version: 1
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: a.txt 里必须留着 hello
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+a.txt 里必须留着 hello。

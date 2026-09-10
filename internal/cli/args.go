@@ -92,3 +92,37 @@ func splitList(s string) []string {
 	}
 	return out
 }
+
+// csvList 同时接受重复给和逗号分隔：--tag a --tag b 与 --tag a,b 等价。
+//
+// 用普通 String flag 时，重复给会**静默只留最后一个**——正是 keel 在别处拒绝的那种静默丢弃。
+type csvList []string
+
+func (l *csvList) String() string { return strings.Join(*l, ",") }
+
+func (l *csvList) Set(v string) error {
+	*l = append(*l, splitList(v)...)
+	return nil
+}
+
+// listFlag 声明一个既可重复也可逗号分隔的列表选项。
+func listFlag(fs *flag.FlagSet, name, usage string) *csvList {
+	var l csvList
+	fs.Var(&l, name, usage)
+	return &l
+}
+
+// stringList 是只能重复给的选项：--done a --done b。
+// 不拆逗号，是因为接续摘要里的每一项都是一句自然语言，本来就可能含逗号。
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, "; ") }
+
+func (l *stringList) Set(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return fmt.Errorf("值不能为空")
+	}
+	*l = append(*l, v)
+	return nil
+}

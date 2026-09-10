@@ -113,15 +113,16 @@ type Precedent struct {
 	ID     store.ID
 	Title  string
 	Status store.DecisionStatus
-	// Verified 表示该先例有关联证据。M1 不产生证据，因此恒为 false。
+	// Verified 表示有一条 pass 证据，且它的 subject_digest 对得上决策现在的内容。
+	// 手写 proven 不会让它变 true——那是自述，不是验证。
 	Verified bool
 }
 
 // Precedents 找出适用范围内、状态有效的决策。
 //
 // 重要：agent 自己把决策改成 proven 不构成独立验证。本函数只回答
-// 「有没有覆盖该路径的有效决策」，不回答「能不能因此自决」——
-// 后者要求 Verified，而 Verified 依赖 M2 的证据模型。
+// 「有没有覆盖该路径的有效决策」以及「它有没有跑出来的证据」，
+// 不回答「能不能因此自决」——上限只由项目策略给出，证据不会把它抬高。
 func Precedents(set *store.Set, q PrecedentQuery) []Precedent {
 	var out []Precedent
 	for _, d := range set.ActiveDecisions() {
@@ -131,11 +132,12 @@ func Precedents(set *store.Set, q PrecedentQuery) []Precedent {
 		if len(q.Paths) > 0 && !anyScope(d.Scope, q.Paths) {
 			continue
 		}
+		_, verified := set.SupportingEvidence(d)
 		out = append(out, Precedent{
 			ID:       d.ID,
 			Title:    d.Title,
 			Status:   d.Status,
-			Verified: len(d.Evidence) > 0,
+			Verified: verified,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID.String() < out[j].ID.String() })

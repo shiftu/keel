@@ -26,7 +26,12 @@ func Protocol(cfg store.Config) string {
 	b.WriteString("5. 提交时用完整 trailer：`Decision: D-<uuid>`。短前缀只能在命令行输入时用。\n")
 	b.WriteString("6. 有价值的经验用 `keel note` 记成 candidate；没有值得记的就不记。" +
 		"未验证的记忆不要当成项目规则来执行。\n")
+	b.WriteString("7. 能跑一条命令验证的结论就跑：`keel verify <M-…|D-…> -- <命令…>`。" +
+		"证据只能这样产生，没有「登记一条我认为它通过了」。跑不起来不算通过。\n")
+	b.WriteString("8. 任务要跨会话或跨工具接着做：`keel task set --goal \"…\" --next \"…\"`。" +
+		"它在 cache/ 里、不进 git，只用于交接；要长期留下的经验仍然走 note / decide。\n")
 	b.WriteString("\n验证：`keel check --target index`（提交前）· `keel check --target worktree`（随时诊断）\n")
+	b.WriteString("知识索引（不装 keel 也能读）：`.keel/knowledge/INDEX.md`\n")
 
 	if lv := cfg.Workflow.DefaultLevel; true {
 		b.WriteString("\n工作流默认上限：" + levelWord(lv) + "。")

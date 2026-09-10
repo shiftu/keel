@@ -241,3 +241,21 @@ func (r *Repo) LogTrailers(path string, limit int) (map[string][]string, error) 
 	}
 	return res, nil
 }
+
+// HeadSHA 返回当前 HEAD 的完整 sha；没有提交时返回空串。
+func (r *Repo) HeadSHA() (string, error) {
+	if !r.HasHead() {
+		return "", nil
+	}
+	return r.git("rev-parse", "HEAD")
+}
+
+// IsClean 报告工作树与暂存区是否都干净。
+// 脏工作树里跑出来的验证结果不能挂在某个提交上——commit 字段必须留空。
+func (r *Repo) IsClean() (bool, error) {
+	out, err := r.git("status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return out == "", nil
+}

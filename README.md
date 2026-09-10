@@ -16,6 +16,8 @@ keel sync                                    .keel/ → CLAUDE.md / AGENTS.md / 
 keel decide "…" --tag db --scope 'internal/store/**' --status accepted
 keel why --path internal/store/db.go         改这里之前先看什么
 keel note "…" --tag db                       记一条候选经验
+keel verify M-xxxx -- go test ./...          真跑一次验证器，把结果记成证据
+keel task set --goal "…" --next "…"          跨会话、跨工具的任务交接
 keel brief --task "…" --path <路径>           任务相关的上下文包
 keel check --target index                    验证真正要提交的内容
 ```
@@ -63,7 +65,10 @@ make check                   # gofmt + go vet + go test ./...
 
 ## 状态
 
-M0（协议）与 M1（统一底座）已实现，`go test ./...` 全绿；M2 起的证据、任务接续与受控进化未做。
+M0（协议）、M1（统一底座）与 M2（可信记忆）已实现，`go test ./...` 全绿。
+M2 给出：证据只能由 `keel verify` 真的跑完一次验证器产生；记忆的 verified/disputed/过期由证据推导，
+`check` 只报告不改写；worktree 级任务接续摘要；`knowledge/INDEX.md`。
+M3 的 `keel review` 与受控进化未做。
 设计见 [docs/design/design.md](docs/design/design.md)，
 格式与命令规格见 [docs/design/formats.md](docs/design/formats.md)，
 审查原文见 [docs/design/architecture-review.md](docs/design/architecture-review.md)。
