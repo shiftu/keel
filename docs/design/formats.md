@@ -166,7 +166,7 @@ store 只认 SQLite。要换库先用 accepted 决策替代，并填写 rule_mig
 执行协议：
 
 - 仅 `status: active` 且带 `check` 的规则在 `--target index|range` 时执行。`brief` / SessionStart / 检索不执行。
-- cwd = 仓库根；超时默认 30s；杀掉进程组。结果：`pass | fail | error | timeout | skipped`。
+- cwd = 仓库根；超时默认 30s；杀掉进程组（Windows 无进程组信号语义，只杀规则进程本身）。结果：`pass | fail | error | timeout | skipped`。
 - 目录不存在、工具不在 PATH → `error` 或 `skipped`（按「检查对象是否应存在」区分），**不得**变成 `pass`。
 - `argv` 目标的退出码约定：0 = pass，1 = fail，其余 = error（与 `fixtures/shell-grep-negation/run.sh` 里的 `check()` 同构）。
 - 禁止把 `! grep …` 当作推荐写法。若项目坚持 shell，executor 仍要区分 grep exit 1（无匹配）与 exit 2（用法/IO 错误）。夹具见 `fixtures/shell-grep-negation/`。

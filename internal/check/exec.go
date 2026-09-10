@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -53,14 +52,8 @@ func RunRule(dir string, argv []string, timeout time.Duration) RunResult {
 
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
-	// 独立进程组，超时时连子进程一起杀掉。
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	// 超时时连规则拉起的子进程一起回收；具体做法按平台分（procgroup_*.go）。
+	setProcessGroup(cmd)
 	out, err := cmd.CombinedOutput()
 	res := RunResult{Output: strings.TrimRight(string(out), "\n")}
 
