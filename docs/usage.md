@@ -2,8 +2,9 @@
 
 对应设计：[design.md](design/design.md)。字段与命令规格：[formats.md](design/formats.md)。
 
-当前实现到 M2：`init` / `sync` / `decide` / `why` / `note` / `verify` / `task` / `check` / `brief` /
-`hook` / `version` 可用；`review` 属于 M3，会明确报「尚未实现」。
+当前实现到 M3：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
+`task` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
+M4 的 `init --from` 与 `sync --codemap` 仍会明确报「尚未实现」。
 
 ## 安装
 
@@ -67,6 +68,7 @@ Codex 侧还要走一次原生项目信任流程，所以这两项报 `unknown` 
 能验证就验    keel verify M-<短前缀> -- go test ./internal/store/...
 要交接了     keel task set --goal "…" --done "…" --next "…"
 提交前       keel check --target index      （pre-commit 会自动跑）
+维护时       keel review                    到期、失效、学习候选
 ```
 
 `brief` 放在最前面：它把接续摘要、工作流上限、适用先例和相关材料一次给全。
@@ -181,6 +183,63 @@ keel task clear
 
 要跨 clone 留下的经验仍然走 `keel note` / `keel decide`。删掉缓存不会撤销任何已生效的知识。
 
+### `keel promote` / `keel retire`
+
+规则从候选到生效、以及生效之后撤回的唯一两个入口。
+
+```
+keel promote <R-…>
+keel retire  <R-…> --reason "<原因>"
+```
+
+`promote` 跑规则的**对照验证**：把 `check.argv` 分别指着 `cases` 里的每个夹具目录跑，
+比对 `expect`。前置条件任一不满足就直接拒绝，一条用例都不跑：
+
+- 状态是 `candidate`；或者是 `active` 但证据已经对不上（那是重新验证，状态不变）
+- 必须有 `check.argv`
+- 必须有 `from` 指向一条**有效**决策——会拦住所有人提交的硬规则，得有一条说明「为什么」的决策背书
+- `cases` 里 `pass` 和 `fail` 两个方向都要有
+
+最后一条最重要：只证明「该过的过了」不算对照验证，一条永远 `exit 0` 的检查也能满足。
+
+跑完写一条证据（subject = 规则 ID）。**失败也写**，规则留在 `candidate`——
+失败历史留在仓库里，下次 `keel review` 还看得到。
+
+`cases` 的夹具是 `.keel/cases/` 下的真目录，执行时 cwd 是夹具目录，
+`argv[0]` 是仓库内相对路径时按仓库根解析。也就是「同一条规则，指着另一份仓库状态跑」。
+
+`expect: fail` 的夹具里放的是故意违规的代码，**全仓库扫描型的检查脚本要把 `.keel/` 排除掉**，
+否则规则会被自己的反例夹具绊倒。
+
+改了 `check.argv`、`cases`、正文，或者 `argv[0]` 指向的检查脚本，
+`check` 就会报 `rule_evidence_stale`（提醒）：现在生效的这条规则和当初通过验证的那条不是同一个东西。
+重新 `keel promote` 一次即可。
+
+`retire` 转 `retired`，把原因写进正文末尾。有决策的 `rule_migration` 曾把旧规则迁到这条时，
+会提示旧规则可以考虑恢复——只提示，不自动改。不删除任何历史。
+
+### `keel review`
+
+```
+keel review [--json]
+```
+
+**只读，且不执行任何规则。** 一次「看看有什么要维护的」不该顺带执行仓库里的代码。
+规则当前过不过，跑 `keel check --target worktree`。
+
+四段：到期复查、失效与冲突、学习候选、统计。学习候选是确定性聚类，不是自动写出来的修订：
+
+| code | 含义 |
+|---|---|
+| `rule_candidate_ready` | 候选规则前置条件齐全，可以 `keel promote` |
+| `rule_candidate_incomplete` | 缺 `check.argv` / `from` / 某个方向的用例 |
+| `memory_cluster` | 同 scope 同 tag 的多条候选记忆，可能是同一条不变量 |
+| `memory_disputed` | 有反例指向它 |
+| `decision_reverted` | `git log` 里 revert 提交引用过这条决策 |
+
+**条数只排审阅优先级。** 同一来源的重复转述在 `memory_cluster` 里算一条——
+「同一件事换个说法记三遍」不会变成三份依据。
+
 ### `keel check`
 
 ```
@@ -266,6 +325,22 @@ keel check --target range --base "$BASE_SHA" --head "$HEAD_SHA" --json
 ```
 
 本地 hook 可以被跳过，也不会随文件自动装到每个 clone。需要合并门禁就靠 CI。
+
+## 谁会执行规则
+
+| 入口 | 执行规则 |
+|---|---|
+| `keel check --target worktree` | ✔ 与工作树变更集求交 |
+| `keel check --target index` / `commit-msg` | ✔ 在暂存区快照上，与暂存文件集求交 |
+| `keel check --target range` | ✔ 与 base…head 文件集求交 |
+| `keel review` / `keel why` / `keel brief` / SessionStart / **Stop** | ✘ |
+
+两条原则：
+
+1. **只有人显式发起的验证才执行仓库里的代码。** Stop 每轮自动触发，
+   来自模板或自动提炼的规则不该因为「一轮结束」就被执行。
+2. **只跑与本次变更相关的那些。** 规则的 `scope` 非空且变更集里没有匹配文件时跳过。
+   改前端不该被 `internal/store/**` 的规则拦下。拿不到变更集（不是 git 仓库、工作树干净）时全跑，并在输出里说明。
 
 ## 知识索引
 

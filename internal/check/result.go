@@ -76,6 +76,7 @@ const (
 	CodeMemoryEvidenceStale     = "memory_evidence_stale"
 	CodeMemoryReviewDue         = "memory_review_due"
 	CodeMemoryConflict          = "memory_conflict"
+	CodeRuleEvidenceStale       = "rule_evidence_stale"
 )
 
 // Finding 是一条检查结论。Code 是契约，Message 只给人看。

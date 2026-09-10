@@ -6,6 +6,8 @@
 package verify
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -202,4 +204,10 @@ func evidenceBody(subj store.Object, run check.RunResult) string {
 	sb.WriteString(strings.Join(lines, "\n"))
 	sb.WriteString("\n```\n")
 	return sb.String()
+}
+
+// digestString 是内部小工具：给验证器定义算摘要。
+func digestString(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

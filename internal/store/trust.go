@@ -54,3 +54,20 @@ func MemoryScopes(set *Set) [][]string {
 	}
 	return out
 }
+
+// RuleEvidenceCurrent 报告规则现在这个样子有没有对得上的 promote 证据：
+// 结果是 pass、subject_digest 对得上、且验证器定义摘要也对得上。
+//
+// check 和 promote 必须用同一份判断，否则会出现「check 说证据过期、
+// promote 说不用重跑」这种自相矛盾。
+func RuleEvidenceCurrent(root string, set *Set, r *Rule) bool {
+	subject := ObjectDigest(r)
+	definition := RuleDefinitionDigest(root, r)
+	for _, e := range set.EvidenceFor(r.ID) {
+		if e.Result == "pass" && e.SubjectDigest == subject &&
+			e.Verifier.DefinitionDigest == definition {
+			return true
+		}
+	}
+	return false
+}

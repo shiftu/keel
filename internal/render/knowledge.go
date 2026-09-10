@@ -52,14 +52,15 @@ func ruleTable(sb *strings.Builder, set *store.Set) {
 		sb.WriteString("（还没有规则。）\n")
 		return
 	}
-	sb.WriteString("| ID | 状态 | 标题 | scope | 依据 |\n|---|---|---|---|---|\n")
+	sb.WriteString("| ID | 状态 | 标题 | scope | 依据 | 对照验证 |\n|---|---|---|---|---|---|\n")
 	for _, r := range rows {
 		basis := "—"
 		if r.From != nil {
 			basis = r.From.Short()
 		}
-		fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
-			r.ID.Short(), r.Status, cell(r.Title), cell(strings.Join(r.Scope, "、")), basis)
+		fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
+			r.ID.Short(), r.Status, cell(r.Title), cell(strings.Join(r.Scope, "、")),
+			basis, casesCell(r, set))
 	}
 }
 
@@ -84,6 +85,24 @@ func memoryTable(sb *strings.Builder, set *store.Set) {
 			m.ID.Short(), m.Status, cell(m.Summary), cell(strings.Join(m.Scope, "、")),
 			verifiedAt, evidenceCell(supported, len(set.EvidenceFor(m.ID))))
 	}
+}
+
+// casesCell 说明这条规则的对照用例齐不齐、跑没跑过。
+func casesCell(r *store.Rule, set *store.Set) string {
+	if len(r.Cases) == 0 {
+		return "无用例"
+	}
+	state := fmt.Sprintf("pass×%d fail×%d", len(r.CaseDirs("pass")), len(r.CaseDirs("fail")))
+	if !r.CasesComplete() {
+		return state + "（方向不全）"
+	}
+	if _, ok := set.SupportingEvidence(r); ok {
+		return state + " · 已通过"
+	}
+	if len(set.EvidenceFor(r.ID)) > 0 {
+		return state + " · 证据对不上当前内容"
+	}
+	return state + " · 未跑过"
 }
 
 func evidenceCell(supported bool, total int) string {

@@ -1,0 +1,130 @@
+[!exec:sh] skip '夹具用 sh 写检查脚本'
+[!unix] skip '夹具用 sh'
+
+chmod 0755 scripts/check/no-postgres.sh
+
+# 候选规则不执行：还没过对照验证的东西不该拦人。
+exec keel check
+stdout '通过'
+
+# 对照验证：pass 夹具要过、fail 夹具要不过，两个方向都对才 promote。
+exec keel promote R-22222222
+stdout '\.keel/evidence/E-'
+stderr '✔ \.keel/cases/R-22222222/pass 期望 pass，实际 pass'
+stderr '✔ \.keel/cases/R-22222222/fail 期望 fail，实际 fail'
+stderr 'candidate → active'
+
+exec sh -c 'cat .keel/rules/R-22222222*.md'
+stdout 'status: active'
+stdout 'evidence:'
+
+exec sh -c 'cat .keel/evidence/E-*.md'
+stdout 'result: pass'
+stdout 'subject: R-22222222-2222-4333-8444-555555555555'
+stdout 'producer: keel-promote'
+stdout '每个方向都符合预期'
+
+# 生效之后规则真的会跑。
+exec keel check
+stdout '通过'
+exec sh -c 'echo "import postgres" > internal/store/bad.go'
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'rule_failed'
+
+# 已经生效且证据对得上：没什么可重跑的。
+exec keelrc promote R-22222222
+stdout 'keel-exit=2'
+stderr '现有证据对得上它现在的样子'
+
+# 改了检查脚本 = 现在生效的这条规则和当初通过验证的那条不再是同一个东西。
+# check 报提醒（不是错误：规则本身没坏，是证据对不上了）。
+exec sh -c 'rm internal/store/bad.go'
+exec sh -c 'printf "\n# 加一行注释也算改过\n" >> scripts/check/no-postgres.sh'
+exec keelrc check
+stdout 'keel-exit=0'
+stdout 'rule_evidence_stale'
+
+# 重新跑一次对照验证就恢复；状态本来就是 active，不再转换。
+exec keel promote R-22222222
+stderr '状态不变'
+exec keel check
+stdout '通过'
+! stdout 'rule_evidence_stale'
+
+-- .keel/keel.yaml --
+version: 1
+-- scripts/check/no-postgres.sh --
+#!/bin/sh
+# 全仓库扫描型检查必须排除 .keel/：反例夹具里放的就是故意违规的代码。
+# 也要排除 scripts/：检查脚本自己就写着要找的那个词。
+out=$(grep -rl postgres . --exclude-dir=.keel --exclude-dir=scripts 2>/dev/null)
+case "$?" in
+  0) echo "$out"; exit 1 ;;
+  1) exit 0 ;;
+  *) echo "grep 出错"; exit 2 ;;
+esac
+-- internal/store/db.go --
+package store
+-- .keel/cases/R-22222222/pass/ok.go --
+package store
+
+// 用 SQLite。
+-- .keel/cases/R-22222222/fail/bad.go --
+package store
+
+import _ "github.com/lib/postgres"
+-- .keel/decisions/D-11111111-1111-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: D-11111111-1111-4333-8444-555555555555
+title: store 层只认 SQLite
+status: accepted
+date: 2026-09-10
+by: human
+tags: [db]
+scope: ["internal/store/**"]
+supersedes: []
+superseded_by: []
+rule_migration: []
+confidence: null
+review_after: null
+evidence: []
+---
+## 背景
+
+曾经同时接过两种数据库。
+
+## 决定
+
+store 层只认 SQLite。
+
+## 备选与理由
+
+保留两套驱动会让测试矩阵翻倍。
+
+## 后果与验证方式
+
+scripts/check/no-postgres.sh 扫不到 postgres 引用就算通过。
+-- .keel/rules/R-22222222-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: R-22222222-2222-4333-8444-555555555555
+title: store 层不得引用 postgres
+status: candidate
+scope: ["internal/store/**"]
+severity: error
+check:
+  argv: ["scripts/check/no-postgres.sh"]
+  timeout_seconds: 30
+from: D-11111111-1111-4333-8444-555555555555
+from_template: null
+verifier_digest: ""
+evidence: []
+cases:
+  - dir: .keel/cases/R-22222222/pass
+    expect: pass
+  - dir: .keel/cases/R-22222222/fail
+    expect: fail
+---
+store 只认 SQLite。

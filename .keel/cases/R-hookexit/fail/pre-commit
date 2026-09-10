@@ -1,0 +1,3 @@
+#!/bin/sh
+# 故意的坏版本：审查复现过的那个。
+keel check --quiet --target index || true

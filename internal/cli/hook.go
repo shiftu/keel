@@ -98,9 +98,10 @@ func hookStop(e *env, adapterName string, ev hookEvent) error {
 		return emitHookJSON(e, map[string]any{}, adapterStatus(e, adapterName))
 	}
 
+	// Stop 只做对象层检查：它每轮自动触发，不该顺带执行仓库里的规则脚本。
+	// 规则执行留给人显式发起的 worktree / index / range。
 	res := check.NewResult(check.TargetWorktree)
 	check.Objects(st, cfg, set, res)
-	check.Rules(st, set, res)
 	res.Sort()
 
 	var problems []string

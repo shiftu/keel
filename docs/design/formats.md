@@ -158,6 +158,14 @@ check:
 from: D-550e8400-e29b-41d4-a716-446655440000
 from_template: null            # 模板导入时填来源；未映射的项目决策引用不能生效
 verifier_digest: sha256:…
+evidence: []                   # 对照验证留下的证据（keel promote 写）
+cases:                         # 对照用例；promote 的前置条件
+  - dir: .keel/cases/R-7c9e6679/pass
+    expect: pass
+  - dir: .keel/cases/R-7c9e6679/fail
+    expect: fail
+  - dir: .keel/cases/R-7c9e6679/edge
+    expect: pass
 ---
 
 store 只认 SQLite。要换库先用 accepted 决策替代，并填写 rule_migration。
@@ -165,13 +173,26 @@ store 只认 SQLite。要换库先用 accepted 决策替代，并填写 rule_mig
 
 执行协议：
 
-- 仅 `status: active` 且带 `check` 的规则在 `--target index|range` 时执行。`brief` / SessionStart / 检索不执行。
+- 只有 `status: active` 且带 `check` 的规则会被执行，且只在 `--target worktree|index|range` 这三个**人显式发起的验证**里。
+  `brief` / `why` / `review` / SessionStart / **Stop** 一律不执行规则——一次「看看有什么要维护的」不该变成执行仓库里的代码。
+- **按 scope 与本次变更集求交后再执行。** `scope` 非空且本次变更集里没有匹配文件 → `skipped`，不计入结果。
+  `scope` 为空 = 全仓库规则，总是执行。拿不到变更集（不是 git 仓库、worktree 干净）时全部执行并在 Notes 里说明。
+  这条约束对应验收「无关任务不被新规则误伤」：改前端不该被 `internal/store/**` 的规则拦下。
 - cwd = 仓库根；超时默认 30s；杀掉进程组（Windows 无进程组信号语义，只杀规则进程本身）。结果：`pass | fail | error | timeout | skipped`。
 - 目录不存在、工具不在 PATH → `error` 或 `skipped`（按「检查对象是否应存在」区分），**不得**变成 `pass`。
 - `argv` 目标的退出码约定：0 = pass，1 = fail，其余 = error（与 `fixtures/shell-grep-negation/run.sh` 里的 `check()` 同构）。
 - 禁止把 `! grep …` 当作推荐写法。若项目坚持 shell，executor 仍要区分 grep exit 1（无匹配）与 exit 2（用法/IO 错误）。夹具见 `fixtures/shell-grep-negation/`。
 - `from` 决策 superseded/rejected：finding `rule_basis_invalid`（warn）。规则不自动 retired。
 - 模板导入：保留 `from_template`；指向未映射项目决策的 `from` 不能使规则生效。
+
+`cases` 是对照用例：每个 `dir` 是仓库里一个真目录，`keel promote` 把 `check.argv` 在它上面跑一遍，
+比对 `expect`。夹具是仓库里可 review、可 diff、跨 clone 可重跑的普通文件，不是隐藏的测试框架。
+
+执行方式：**cwd = 夹具目录**；`argv[0]` 是仓库内相对路径且在仓库根存在时按仓库根解析，其余参数原样传。
+也就是「同一条规则，指着另一份仓库状态跑」。
+
+`expect: fail` 的夹具里放的是**故意违规的代码**。全仓库扫描型的检查脚本必须把 `.keel/` 排除掉，
+否则规则会被自己的反例夹具绊倒——正常验证时扫到 `.keel/cases/*/fail/` 就报违规。
 
 ## 5. 记忆
 
@@ -218,6 +239,9 @@ SQLite WAL 在 NFS 上会锁失败；测试用临时目录必须在本地盘。
 | `memory_conflict` | 某条 `counterexample` 的 `derived_from` 指向一条仍是 `verified` 的记忆 | warn |
 | `object_stale` | scope 在工作树里一个都匹配不上（与决策、规则同一条规则） | warn |
 
+规则那侧对应的一条：`rule_evidence_stale`（warn）——`active` 规则有过 promote 证据，
+但它现在的定义摘要对不上了。它正在拦所有人，却没有对得上的验证。
+
 `memory_status_unsupported` 是 error 而不是 warn：文件自称 verified、证据却支持不了它，等于把未验证的经验当成项目规则用。
 改了记忆正文就会让旧证据的 `subject_digest` 对不上——这是有意的，结论变了就要重新验证。
 
@@ -250,6 +274,7 @@ digest 输入集合排除 `evidence/` 自身与 `cache/`。密钥与不必要的
 两个 digest 回答两个不同的问题，都不能省：
 
 - `subject_digest`：**被验证的结论**在验证时的内容摘要。对不上 = 证据说的不是现在这条记忆。
+  subject 可以是记忆、决策或规则；规则的证据由 `keel promote` 的对照验证产生。
 - `target.content_digest`：**被验证的代码**在验证时的内容摘要（按 subject 的 `scope` 收集，路径排序后逐个摘要）。
   对不上 = 结论没变，但代码变了，验证结果过期。
 
@@ -280,7 +305,7 @@ files:
 
 ## 8. 命令规格
 
-通用：`--json`；`-C <dir>`；`--quiet`。业务退出码 0 / 1 / 2。`keel hook` 的退出码见 §8.11，与业务 CLI 分离。
+通用：`--json`；`-C <dir>`；`--quiet`。业务退出码 0 / 1 / 2。`keel hook` 的退出码见 §8.12，与业务 CLI 分离。
 
 stdin/file 正文：`--body -` 读 stdin 至 EOF；`--body <path>` 读文件。与位置参数同时出现 → 退出码 2。
 
@@ -377,7 +402,38 @@ keel task clear
 - `set` 记录写入时的 HEAD。`show` 与 `brief` 在 HEAD 变了之后照实说明「摘要记录于 <sha>」，不假装还准确。
 - 摘要出现在 `brief` 最前面，并标明它来自本机缓存、跨 clone 不保证。
 
-### 8.7 `keel why`
+### 8.7 `keel promote` / `keel retire`
+
+规则从候选到生效、以及生效之后撤回的唯一两个入口。
+
+```
+keel promote <R-…> [--json]
+keel retire  <R-…> --reason "<原因>" [--json]
+```
+
+`promote` 的前置条件，任一不满足直接拒绝（退出码 1 或 2）：
+
+| 条件 | 为什么 |
+|---|---|
+| 状态是 `candidate`，或是 `active` 但证据已对不上 | 后者是**重新验证**：改了定义之后再跑一次，状态不变 |
+| 有 `check.argv` | 没有可执行检查的是软规则，靠人遵守，不走这条路 |
+| `from` 指向一条**有效**决策 | 会拦住所有人提交的硬规则，必须有一条说明「为什么」的决策背书 |
+| `cases` 里 `pass` 和 `fail` 两个方向都有 | 只证明「该过的过了」不算对照验证——一条永远返回 0 的检查也能满足 |
+| 每条 case 的实际结果等于 `expect` | 验证器由现行基线提供，候选不能放宽自己的检查后宣告通过 |
+
+跑完写一条证据（subject = 规则 ID，kind = `check`），正文逐条列出用例结果。
+**失败也写证据**，`result: fail`，规则留在 `candidate`——失败历史留在仓库里，下次 review 看得到。
+
+规则的 `definition_digest` 覆盖四样：`check.argv`、`cases`、正文，
+以及 `argv[0]` 指向的仓库内脚本的内容。改检查脚本和改 argv 是同一件事——
+现在生效的这条规则，和当初通过对照验证的那条不再是同一个东西。
+对不上时 `check` 报 `rule_evidence_stale`（warn），重新 `promote` 一次即可。
+
+`retire` 把 `active` / `candidate` 转 `retired`，在正文末尾追加一段带日期的撤回原因。
+如果有决策的 `rule_migration` 曾把某条旧规则迁到这条，**提示**旧规则可以考虑恢复——只提示，不自动改。
+不删除任何历史。
+
+### 8.8 `keel why`
 
 ```
 keel why [--path <path>] [--query <关键词>] [--history] [--json]
@@ -389,7 +445,7 @@ keel why [--path <path>] [--query <关键词>] [--history] [--json]
 - 默认有效结论；`--history` 含否决与替代，明确标记。
 - 每条输出包含状态、路径、版本/ID、`why_selected`。
 
-### 8.8 `keel check`
+### 8.9 `keel check`
 
 ```
 keel check [--target worktree|index|commit-msg|range] \
@@ -403,7 +459,7 @@ keel check [--target worktree|index|commit-msg|range] \
 | 调用场景 | target | 行为 |
 |---|---|---|
 | SessionStart / brief | （不跑 check） | 只读上下文 |
-| Stop | worktree + 会话基线 | 纠正建议 + unresolved；不读猜测的消息草稿 |
+| Stop | 只做对象层检查 | 纠正建议 + unresolved；**不执行规则**（自动触发的入口不执行仓库代码）；不读猜测的消息草稿 |
 | pre-commit | index | 验证将提交的文件及同一快照中的规则、决策 |
 | commit-msg | commit-msg：`$1` + index | `git interpret-trailers --parse`；语义变更覆盖 |
 | CI | range：`--base` + `--head` | 重算验证、决策覆盖、生成产物漂移 |
@@ -452,11 +508,11 @@ JSON（业务 CLI，**不是**宿主 hook 外形）：
 }
 ```
 
-去重：只抑制重复**反馈**（键见 §8.11），不得把 `fail` 改成 `pass`。Stop 的 unresolved 必须仍出现在随后的 index/range 检查中。
+去重：只抑制重复**反馈**（键见 §8.12），不得把 `fail` 改成 `pass`。Stop 的 unresolved 必须仍出现在随后的 index/range 检查中。
 
 缓存：按代码目标 digest、规则集 digest、策略 digest、keel 版本绑定。缺失或不匹配显示 unknown，不能用旧绿色代替验证。
 
-### 8.9 `keel brief`
+### 8.10 `keel brief`
 
 ```
 keel brief [--task <text>] [--path <p>] [--changed] [--budget <bytes>] [--json]
@@ -490,21 +546,44 @@ UTF-8 字节上限硬约束。超预算显示省略摘要和原文位置，不�
 
 静态 CLAUDE.md / AGENTS.md **不**内嵌会过期的自主度表；动态状态只从 brief 来。
 
-### 8.10 `keel review`
+### 8.11 `keel review`
 
 ```
 keel review [--json]
 ```
 
-输出：到期决策及证据、学习候选（附依据）、工作流建议（**不是**自动新上限）、失效/冲突条目、统计。次数只排审阅优先级。证据来源：已提交 evidence、`git log` revert、硬规则结果。不把 cache-only 计数当跨 clone 事实。
+**只读，且不执行任何规则。** 一次「看看有什么要维护的」不该顺带执行仓库里的代码。
+规则当前过不过，跑 `keel check --target worktree`。
 
-### 8.11 `keel hook <adapter> <event>`
+四段输出：
+
+| 段 | 内容 | 数据来源 |
+|---|---|---|
+| 到期 | `review_after` 已过的决策与记忆，各自带证据状态 | 已提交的对象与 evidence |
+| 失效与冲突 | 知识层的 finding：`rule_basis_invalid`、`memory_status_unsupported`、`memory_evidence_stale`、`memory_conflict`、`decision_scope_overlap`、`object_stale` | `check` 的对象层检查（不含规则执行） |
+| 学习候选 | 见下表 | 已提交对象 + `git log` |
+| 统计 | 各类对象条数、有证据的比例 | 已提交对象 |
+
+学习候选是**确定性聚类**，不是自动写出来的修订。keel 给簇和依据，判断它们是不是同一条不变量是宿主 agent 的活：
+
+| 候选 | 条件 |
+|---|---|
+| `rule_candidate_ready` | `candidate` 规则，`cases` 齐全 → 可以 `keel promote` |
+| `rule_candidate_incomplete` | `candidate` 规则，缺 `check.argv` / `from` / 某个方向的 case → 先补齐 |
+| `memory_cluster` | 同 scope 同 tag 的 ≥2 条 candidate 记忆 → 可能是同一条不变量 |
+| `memory_disputed` | 有 `counterexample` 指向它 → 先处理冲突，再谈提炼 |
+| `decision_reverted` | `git log` 里 `Revert` 提交引用过的决策 → 结论可能不成立 |
+
+**次数只排审阅优先级，不决定可信或生效。** 同一 `derived_from` 的重复转述在 `memory_cluster` 里计为一条，
+不按条数升级。不把 `cache/` 里的计数当跨 clone 事实——`review` 只读已提交的内容。
+
+### 8.12 `keel hook <adapter> <event>`
 
 内部入口。读 stdin 事件，调共享内核，编码宿主输出。
 
 - 正常决策路径：**exit 0 + 合法 JSON**（Claude 与 Codex 均如此编码）。
 - 用法错误、内核崩溃：非 0，stderr 诊断；**不得**输出半截宿主 `decision` 对象。
-- `check --json` 只返回 §8.8 的稳定结果，不返回 Claude/Codex 的 `decision`。
+- `check --json` 只返回 §8.9 的稳定结果，不返回 Claude/Codex 的 `decision`。
 - Codex：按其文档，继续执行用 exit 0 JSON；需要阻断/继续的语义由 adapter 翻译。不得把业务退出码 2 泄漏成「Codex 继续」。
 - Stop：不猜测 commit message。去重键 = repo + worktree + session + turn（若有）+ 信号摘要。第二次相同未解决问题：结束循环、保留 fail、不请求继续。
 
@@ -612,7 +691,10 @@ fi
 
 **keel-learn**：① 查同类记忆；② 写 candidate，附 conditions；有验证则关联 evidence；③ 无值得保留的内容则结束。禁止靠重复转述凑条数。
 
-**keel-review**：① `keel review --json`；② 生成有上限的 candidate，不直接改 active 硬规则；③ 对照验证（正/反/边界）由现行基线执行；④ 按 `workflow` 与项目审查生效或撤回；⑤ `keel check --target worktree` 与 `keel sync`。失效条目重定位或归档，不删除反例。
+**keel-review**：① `keel review --json`；② 生成有上限的 candidate 规则，**不直接写 `status: active`**；
+③ 给它 `from`（依据决策）和 `cases`（至少 pass / fail 两个方向的真目录）；④ `keel promote R-…` 跑对照验证，
+过不了就留在 candidate，失败证据也留在仓库里；⑤ 发现反例或回归用 `keel retire R-… --reason "…"`；
+⑥ `keel check --target worktree` 与 `keel sync` 收尾。失效条目重定位或归档，不删除反例。
 
 ## 11. 工作流建议的计算
 

@@ -1,0 +1,44 @@
+[!unix] skip '夹具用 sh'
+
+chmod 0755 marker.sh
+
+# Stop 每轮自动触发。它只做对象层检查，不执行仓库里的规则脚本——
+# 来自模板或自动提炼的内容不该因为「一轮结束」就变成代码执行。
+stdin stop.json
+exec keel hook claude stop
+stdout 'adapter_status'
+! exists ran.txt
+
+# 人显式跑 check 时才执行。
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'rule_failed'
+exists ran.txt
+
+-- .keel/keel.yaml --
+version: 1
+-- marker.sh --
+#!/bin/sh
+echo ran > ran.txt
+echo "规则跑过了"
+exit 1
+-- stop.json --
+{"session_id":"s1","hook_event_name":"Stop","turn_id":"t1"}
+-- .keel/rules/R-22222222-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: R-22222222-2222-4333-8444-555555555555
+title: 一执行就留痕迹的规则
+status: active
+scope: []
+severity: error
+check:
+  argv: ["./marker.sh"]
+  timeout_seconds: 30
+from: null
+from_template: null
+verifier_digest: ""
+evidence: []
+cases: []
+---
+用来证明哪些入口会执行规则。

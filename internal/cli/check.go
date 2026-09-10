@@ -45,8 +45,9 @@ func cmdCheck(e *env, args []string) error {
 
 	res := check.NewResult(t)
 	check.Objects(st, cfg, set, res)
-	if t == check.TargetIndex || t == check.TargetRange || t == check.TargetWorktree {
-		check.Rules(st, set, res)
+	if t == check.TargetWorktree {
+		// 规则按 scope 与变更集求交；index 与 range 各自在自己的快照与文件集上跑。
+		check.Rules(st, set, res, worktreeChanged(st, res))
 	}
 	if err := runTargetChecks(e, st, cfg, set, res, t, *commitMsg, *base, *head); err != nil {
 		return err
@@ -192,6 +193,7 @@ func runTargetChecks(e *env, st *store.Store, cfg store.Config, set *store.Set,
 			return nil
 		}
 		cs := check.ChangeSet{Repo: repo, Files: files, BeforeRev: base, AfterRev: head}
+		check.Rules(st, set, res, files)
 		check.Signals(st, cfg, set, res, cs, coverageFromFiles(st, set, files, nil))
 		return nil
 	}
@@ -236,7 +238,7 @@ func checkIndex(e *env, st *store.Store, cfg store.Config, res *check.Result,
 		}
 		res.Notes = append(res.Notes, "对象与规则在暂存区快照上验证")
 		check.Objects(snap, snapCfg, snapSet, res)
-		check.Rules(snap, snapSet, res)
+		check.Rules(snap, snapSet, res, files)
 		cov.ChangedDecisionPaths = changedDecisionPaths(files)
 		check.Signals(st, snapCfg, snapSet, res, check.ChangeSet{
 			Repo: repo, Files: files, BeforeRev: headRev(repo), AfterRev: ":",
@@ -252,6 +254,26 @@ func checkIndex(e *env, st *store.Store, cfg store.Config, res *check.Result,
 		Repo: repo, Files: files, BeforeRev: headRev(repo), AfterRev: ":",
 	}, cov)
 	return nil
+}
+
+// worktreeChanged 取工作树的变更集。拿不到就返回 nil（全部规则都跑）并说明原因，
+// 不假装「没有变更」从而静默跳过所有规则。
+func worktreeChanged(st *store.Store, res *check.Result) []string {
+	repo, err := gitx.Open(st.Root)
+	if err != nil {
+		res.Notes = append(res.Notes, "不是 git 仓库，取不到变更集：所有 active 规则都会执行")
+		return nil
+	}
+	files, err := repo.WorktreeFiles()
+	if err != nil {
+		res.Notes = append(res.Notes, "取工作树变更集失败，所有 active 规则都会执行："+err.Error())
+		return nil
+	}
+	if len(files) == 0 {
+		res.Notes = append(res.Notes, "工作树干净，没有变更集可比：所有 active 规则都会执行")
+		return nil
+	}
+	return files
 }
 
 func headRev(repo *gitx.Repo) string {

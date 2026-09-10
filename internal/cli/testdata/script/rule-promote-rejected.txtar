@@ -1,0 +1,141 @@
+[!exec:sh] skip '夹具用 sh 写检查脚本'
+[!unix] skip '夹具用 sh'
+
+chmod 0755 scripts/check/always-pass.sh
+
+# 没有依据决策：会拦住所有人的硬规则必须有一条说明「为什么」的决策。
+exec keelrc promote R-33333333
+stdout 'keel-exit=2'
+stderr '没有 from'
+exec sh -c 'grep "^status:" .keel/rules/R-33333333*.md'
+stdout 'status: candidate'
+
+# 只有 pass 方向：一条永远 exit 0 的检查也能满足，不算对照验证。
+exec keelrc promote R-44444444
+stdout 'keel-exit=2'
+stderr 'cases 缺少 pass 或 fail 方向'
+exec sh -c 'ls .keel/evidence 2>/dev/null | wc -l | tr -d " "'
+stdout '^0$'
+
+# 两个方向都给了，但 fail 夹具实际跑出来是 pass：候选不能放宽自己的检查。
+# 这一次是真跑过的，所以失败证据要留在仓库里。
+exec keelrc promote R-55555555
+stdout 'keel-exit=1'
+stderr '✘ \.keel/cases/x/fail 期望 fail，实际 pass'
+stderr '留在 candidate'
+exec sh -c 'grep "^status:" .keel/rules/R-55555555*.md'
+stdout 'status: candidate'
+exec sh -c 'cat .keel/evidence/E-*.md'
+stdout 'result: fail'
+stdout 'subject: R-55555555-5555-4333-8444-555555555555'
+stdout '规则留在 candidate'
+
+# review 会把它重新捞出来。
+exec keel review
+stdout 'rule_candidate_ready'
+
+-- .keel/keel.yaml --
+version: 1
+-- scripts/check/always-pass.sh --
+#!/bin/sh
+exit 0
+-- .keel/cases/x/pass/ok.txt --
+ok
+-- .keel/cases/x/fail/bad.txt --
+bad
+-- .keel/decisions/D-11111111-1111-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: D-11111111-1111-4333-8444-555555555555
+title: 有一条依据
+status: accepted
+date: 2026-09-10
+by: human
+tags: [x]
+scope: ["scripts/**"]
+supersedes: []
+superseded_by: []
+rule_migration: []
+confidence: null
+review_after: null
+evidence: []
+---
+## 背景
+
+需要一条依据。
+
+## 决定
+
+就这么定。
+
+## 备选与理由
+
+没有别的。
+
+## 后果与验证方式
+
+跑脚本。
+-- .keel/rules/R-33333333-3333-4333-8444-555555555555-a.md --
+---
+schema: 1
+id: R-33333333-3333-4333-8444-555555555555
+title: 没有依据决策的规则
+status: candidate
+scope: []
+severity: error
+check:
+  argv: ["scripts/check/always-pass.sh"]
+  timeout_seconds: 30
+from: null
+from_template: null
+verifier_digest: ""
+evidence: []
+cases:
+  - dir: .keel/cases/x/pass
+    expect: pass
+  - dir: .keel/cases/x/fail
+    expect: fail
+---
+缺 from。
+-- .keel/rules/R-44444444-4444-4333-8444-555555555555-b.md --
+---
+schema: 1
+id: R-44444444-4444-4333-8444-555555555555
+title: 只有一个方向的对照用例
+status: candidate
+scope: []
+severity: error
+check:
+  argv: ["scripts/check/always-pass.sh"]
+  timeout_seconds: 30
+from: D-11111111-1111-4333-8444-555555555555
+from_template: null
+verifier_digest: ""
+evidence: []
+cases:
+  - dir: .keel/cases/x/pass
+    expect: pass
+---
+只有 pass。
+-- .keel/rules/R-55555555-5555-4333-8444-555555555555-c.md --
+---
+schema: 1
+id: R-55555555-5555-4333-8444-555555555555
+title: 检查永远通过，反例夹具拦不住
+status: candidate
+scope: []
+severity: error
+check:
+  argv: ["scripts/check/always-pass.sh"]
+  timeout_seconds: 30
+from: D-11111111-1111-4333-8444-555555555555
+from_template: null
+verifier_digest: ""
+evidence: []
+cases:
+  - dir: .keel/cases/x/pass
+    expect: pass
+  - dir: .keel/cases/x/fail
+    expect: fail
+---
+永远 exit 0。

@@ -17,8 +17,11 @@ keel decide "…" --tag db --scope 'internal/store/**' --status accepted
 keel why --path internal/store/db.go         改这里之前先看什么
 keel note "…" --tag db                       记一条候选经验
 keel verify M-xxxx -- go test ./...          真跑一次验证器，把结果记成证据
+keel promote R-xxxx                          规则过了对照验证才生效
+keel retire R-xxxx --reason "…"              撤回一条规则，保留原因与历史
 keel task set --goal "…" --next "…"          跨会话、跨工具的任务交接
 keel brief --task "…" --path <路径>           任务相关的上下文包
+keel review                                  到期、失效、学习候选
 keel check --target index                    验证真正要提交的内容
 ```
 
@@ -65,10 +68,16 @@ make check                   # gofmt + go vet + go test ./...
 
 ## 状态
 
-M0（协议）、M1（统一底座）与 M2（可信记忆）已实现，`go test ./...` 全绿。
-M2 给出：证据只能由 `keel verify` 真的跑完一次验证器产生；记忆的 verified/disputed/过期由证据推导，
-`check` 只报告不改写；worktree 级任务接续摘要；`knowledge/INDEX.md`。
-M3 的 `keel review` 与受控进化未做。
+M0（协议）、M1（统一底座）、M2（可信记忆）与 M3（受控进化）已实现，`go test ./...` 全绿。
+
+- M2：证据只能由 `keel verify` 真的跑完一次验证器产生；记忆的 verified/disputed/过期由证据推导，
+  `check` 只报告不改写；worktree 级任务接续摘要；`knowledge/INDEX.md`。
+- M3：规则要过 `keel promote` 的对照验证（pass / fail 两个方向都得有）才能生效，且必须有决策依据；
+  `keel retire` 撤回时保留原因与失败历史；规则按 scope 与变更集求交后才执行，
+  Stop 与 review 一律不执行规则；`keel review` 给确定性的学习候选簇。
+
+M4（模板导入、`--codemap`、更多适配器）未做。技能版本与对照评估一并后置到 M4——
+它要求宿主在固定任务集上执行任务，在那套基础设施存在之前做，只会给出没有验证支撑的可信度。
 设计见 [docs/design/design.md](docs/design/design.md)，
 格式与命令规格见 [docs/design/formats.md](docs/design/formats.md)，
 审查原文见 [docs/design/architecture-review.md](docs/design/architecture-review.md)。

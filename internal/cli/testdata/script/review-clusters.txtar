@@ -1,0 +1,148 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec git add -A
+exec git commit -q -m first
+
+# 同 scope 同 tag 的候选记忆聚成一簇，但同源转述只算一条：
+# 「同一件事换个说法记三遍」不该变成三份依据。
+exec keel review
+stdout 'memory_cluster'
+stdout '2 条 candidate 记忆落在同一个 scope 和 tag 上'
+! stdout '3 条 candidate 记忆'
+
+# 反例指向的结论要先处理冲突。
+stdout 'memory_disputed'
+stdout '先处理冲突，再谈提炼'
+
+# 关联提交被 revert 过的决策要重新审视。
+exec sh -c 'echo x > x.txt'
+exec git add x.txt
+exec git commit -q -F msg.txt
+exec git revert --no-edit HEAD
+exec keel review
+stdout 'decision_reverted'
+stdout '关联的 1 个提交后来被 revert 过'
+stdout '别直接删'
+
+exec keel review --json
+stdout '"code": "decision_reverted"'
+stdout '"schema": 1'
+
+-- .keel/keel.yaml --
+version: 1
+-- msg.txt --
+加一个文件
+
+Decision: D-11111111-1111-4333-8444-555555555555
+-- internal/store/db.go --
+package store
+-- .keel/decisions/D-11111111-1111-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: D-11111111-1111-4333-8444-555555555555
+title: 加文件这件事
+status: accepted
+date: 2026-09-10
+by: human
+tags: [storage]
+scope: ["internal/store/**"]
+supersedes: []
+superseded_by: []
+rule_migration: []
+confidence: null
+review_after: null
+evidence: []
+---
+## 背景
+
+需要一条决策。
+
+## 决定
+
+就这么定。
+
+## 备选与理由
+
+没有别的。
+
+## 后果与验证方式
+
+看提交。
+-- .keel/memory/M-22222222-2222-4333-8444-555555555555-a.md --
+---
+schema: 1
+id: M-22222222-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: WAL 在网络盘上锁失败
+tags: [storage]
+scope: ["internal/store/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+第一条。
+-- .keel/memory/M-33333333-3333-4333-8444-555555555555-b.md --
+---
+schema: 1
+id: M-33333333-3333-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 临时目录要放本地盘
+tags: [storage]
+scope: ["internal/store/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+第二条。
+-- .keel/memory/M-44444444-4444-4333-8444-555555555555-c.md --
+---
+schema: 1
+id: M-44444444-4444-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 换个说法再记一遍网络盘的事
+tags: [storage]
+scope: ["internal/store/**"]
+conditions: {}
+evidence: []
+derived_from: [M-22222222-2222-4333-8444-555555555555]
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+和第一条同源。
+-- .keel/memory/M-55555555-5555-4333-8444-555555555555-d.md --
+---
+schema: 1
+id: M-55555555-5555-4333-8444-555555555555
+kind: counterexample
+status: candidate
+summary: 我们的 NFS 上其实没问题
+tags: [storage]
+scope: ["internal/store/**"]
+conditions: {}
+evidence: []
+derived_from: [M-33333333-3333-4333-8444-555555555555]
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:codex
+date: 2026-09-10
+---
+反例。

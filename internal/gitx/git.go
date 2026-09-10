@@ -259,3 +259,60 @@ func (r *Repo) IsClean() (bool, error) {
 	}
 	return out == "", nil
 }
+
+// RevertedDecisions 返回被 Revert 提交撤销掉的那些提交里出现的 Decision 引用。
+//
+// 它回答的是「这条决策关联的改动后来被撤回过」，不是「这条决策错了」——
+// 判断结论还成不成立是人的活，keel 只把线索摆出来。
+func (r *Repo) RevertedDecisions(limit int) (map[string][]string, error) {
+	if !r.HasHead() {
+		return map[string][]string{}, nil
+	}
+	// %B 里找 "This reverts commit <sha>."，再去读被撤销那条提交的 trailer。
+	out, err := r.git("log", fmt.Sprintf("-n%d", limit), "--grep=^Revert \"", "--format=%H%x1f%B%x1d")
+	if err != nil {
+		return nil, err
+	}
+	res := map[string][]string{}
+	for _, rec := range strings.Split(out, "\x1d") {
+		rec = strings.TrimSpace(rec)
+		if rec == "" {
+			continue
+		}
+		_, body, ok := strings.Cut(rec, "\x1f")
+		if !ok {
+			continue
+		}
+		for _, orig := range revertedSHAs(body) {
+			msg, err := r.git("log", "-n1", "--format=%B", orig)
+			if err != nil {
+				continue
+			}
+			tr, err := r.Trailers(msg)
+			if err != nil {
+				continue
+			}
+			for _, id := range tr["Decision"] {
+				res[id] = append(res[id], orig)
+			}
+		}
+	}
+	return res, nil
+}
+
+// revertedSHAs 从 revert 提交正文里取出被撤销的提交 sha。
+func revertedSHAs(body string) []string {
+	const marker = "This reverts commit "
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, marker) {
+			continue
+		}
+		sha := strings.TrimSuffix(strings.TrimPrefix(line, marker), ".")
+		if sha = strings.TrimSpace(sha); sha != "" {
+			out = append(out, sha)
+		}
+	}
+	return out
+}

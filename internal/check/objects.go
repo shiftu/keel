@@ -19,6 +19,7 @@ func Objects(st *store.Store, cfg store.Config, set *store.Set, res *Result) {
 	refIntegrity(set, res)
 	supersedeConsistency(set, res)
 	ruleBasis(set, res)
+	ruleEvidence(st, set, res)
 	scopeOverlap(set, res)
 	staleScope(st, set, res)
 	memoryLifecycle(st, set, res)
@@ -165,6 +166,34 @@ func ruleBasis(set *store.Set, res *Result) {
 			Object:   r.ID.String(),
 			Message:  fmt.Sprintf("规则依据 %s 已是 %s，但规则仍为 %s", d.ID.Short(), d.Status, r.Status),
 			Fix:      "由替代决策说明规则迁移；确认后再改规则状态",
+		})
+	}
+}
+
+// ruleEvidence 报告 active 规则的对照验证已经和它现在的样子对不上。
+//
+// promote 之后又改了 check.argv、对照用例或正文，说明现在生效的这条规则
+// 和当初通过验证的那条不是同一个东西——它正在拦所有人，却没有对得上的证据。
+func ruleEvidence(st *store.Store, set *store.Set, res *Result) {
+	for _, r := range set.Rules {
+		if r.Status != store.RuleActive || r.Check == nil {
+			continue
+		}
+		// 手写的 active 规则（M1 起就允许）没有证据，不在这里报——
+		// promote 才是有证据的那条路，没走过就没什么可比对的。
+		if len(set.EvidenceFor(r.ID)) == 0 {
+			continue
+		}
+		if store.RuleEvidenceCurrent(st.Root, set, r) {
+			continue
+		}
+		res.Add(Finding{
+			Code:     CodeRuleEvidenceStale,
+			Severity: SeverityWarn,
+			Path:     r.SourcePath(),
+			Object:   r.ID.String(),
+			Message:  "规则在通过对照验证之后被改过（argv、对照用例或正文），旧证据对不上现在这条",
+			Fix:      "重新跑 keel promote；或者确认改动无关紧要，但那要由人判断",
 		})
 	}
 }
@@ -345,9 +374,19 @@ func containsID(list []store.ID, id store.ID) bool {
 }
 
 // Rules 执行 active 硬规则。candidate 与 retired 不执行。
-func Rules(st *store.Store, set *store.Set, res *Result) {
+//
+// changed 是本次的变更集（仓库相对路径）。规则的 scope 与它求交后才执行：
+// 改前端不该被 internal/store/** 的规则拦下。changed 为 nil 表示拿不到变更集
+// （不是 git 仓库、或调用方本就要全量跑），此时全部执行。
+//
+// 调用方只能是人显式发起的验证（worktree / index / range）。
+// review、brief、SessionStart、Stop 都不调这里——那些入口不执行仓库里的代码。
+func Rules(st *store.Store, set *store.Set, res *Result, changed []string) {
 	for _, r := range set.Rules {
 		if !r.IsExecutable() {
+			continue
+		}
+		if !ruleTouched(r, changed) {
 			continue
 		}
 		timeout := DefaultTimeout
@@ -387,6 +426,20 @@ func Rules(st *store.Store, set *store.Set, res *Result) {
 			})
 		}
 	}
+}
+
+// ruleTouched 报告本次变更集是否落在规则的 scope 内。
+// scope 为空 = 全仓库规则，总是执行。
+func ruleTouched(r *store.Rule, changed []string) bool {
+	if changed == nil || len(r.Scope) == 0 {
+		return true
+	}
+	for _, f := range changed {
+		if _, ok := store.MatchAny(r.Scope, f); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func indentOutput(out string) string {

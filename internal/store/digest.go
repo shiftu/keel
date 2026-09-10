@@ -206,3 +206,43 @@ func skipDir(name, rel string) bool {
 	}
 	return false
 }
+
+// RuleDefinitionDigest 覆盖 check.argv、对照用例集合、正文，
+// 以及 argv[0] 指向的仓库内脚本的内容。
+//
+// 最后一项不能少：改检查脚本和改 argv 是同一件事——现在生效的这条规则
+// 和当初通过对照验证的那条不再是同一个东西。
+func RuleDefinitionDigest(root string, r *Rule) string {
+	h := sha256.New()
+	if r.Check != nil {
+		fmt.Fprintf(h, "argv\x00%s\n", strings.Join(r.Check.Argv, "\x01"))
+		if script, ok := RepoScript(root, r.Check.Argv); ok {
+			if data, err := os.ReadFile(script); err == nil {
+				sum := sha256.Sum256(data)
+				fmt.Fprintf(h, "script\x00%s\n", hex.EncodeToString(sum[:]))
+			}
+		}
+	}
+	for _, c := range r.Cases {
+		fmt.Fprintf(h, "case\x00%s=%s\n", c.Dir, c.Expect)
+	}
+	fmt.Fprintf(h, "body\x00%s\n", strings.TrimSpace(r.Body()))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// RepoScript 把 argv[0] 解析成仓库内的脚本绝对路径。
+// argv[0] 是绝对路径、或不含 / 的命令名（走 PATH）时返回 false。
+func RepoScript(root string, argv []string) (string, bool) {
+	if len(argv) == 0 {
+		return "", false
+	}
+	a0 := argv[0]
+	if filepath.IsAbs(a0) || !strings.Contains(a0, "/") {
+		return "", false
+	}
+	p := filepath.Join(root, filepath.FromSlash(a0))
+	if fi, err := os.Stat(p); err != nil || fi.IsDir() {
+		return "", false
+	}
+	return p, true
+}

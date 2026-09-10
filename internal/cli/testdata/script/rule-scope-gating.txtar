@@ -1,0 +1,57 @@
+[!exec:git] skip '需要 git 取变更集'
+[!exec:sh] skip '夹具用 sh'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+chmod 0755 always-fail.sh
+exec git add -A
+exec git commit -q -m first
+
+# 只改前端：scope 在 internal/store/** 的规则不该被触发。
+# 这条对应验收「无关任务不被新规则误伤」。
+exec sh -c 'echo "console.log(1)" >> web/app.js'
+exec keel check
+stdout '通过'
+! stdout 'rule_failed'
+
+# 改了 store 才轮到它拦人。
+exec sh -c 'echo "package store" >> internal/store/db.go'
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'rule_failed'
+
+# index 用暂存区的文件集：只暂存前端改动时同样不该被拦。
+exec git stash -q
+exec sh -c 'echo "console.log(2)" >> web/app.js'
+exec git add web/app.js
+exec keel check --target index
+stdout '通过'
+
+-- .keel/keel.yaml --
+version: 1
+-- always-fail.sh --
+#!/bin/sh
+echo "这条规则总是失败"
+exit 1
+-- web/app.js --
+console.log(0)
+-- internal/store/db.go --
+package store
+-- .keel/rules/R-22222222-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: R-22222222-2222-4333-8444-555555555555
+title: store 层的一条总是失败的规则
+status: active
+scope: ["internal/store/**"]
+severity: error
+check:
+  argv: ["./always-fail.sh"]
+  timeout_seconds: 30
+from: null
+from_template: null
+verifier_digest: ""
+evidence: []
+cases: []
+---
+只用来验证 scope 求交。

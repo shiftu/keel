@@ -166,6 +166,15 @@ type RuleCheck struct {
 	TimeoutSeconds int      `yaml:"timeout_seconds"`
 }
 
+// RuleCase 是一条对照用例：把 check.argv 指着 Dir 跑一遍，看结果是不是 Expect。
+//
+// 夹具是仓库里的真目录，可 review、可 diff、跨 clone 可重跑；
+// keel 不引入隐藏的测试框架，只负责组织夹具和比对结果。
+type RuleCase struct {
+	Dir    string `yaml:"dir"`
+	Expect string `yaml:"expect"` // pass | fail
+}
+
 type RuleFM struct {
 	Schema         int            `yaml:"schema"`
 	ID             ID             `yaml:"id"`
@@ -177,6 +186,8 @@ type RuleFM struct {
 	From           *ID            `yaml:"from"`
 	FromTemplate   *string        `yaml:"from_template"`
 	VerifierDigest string         `yaml:"verifier_digest"`
+	Evidence       []ID           `yaml:"evidence"`
+	Cases          []RuleCase     `yaml:"cases"`
 	Extensions     map[string]any `yaml:"extensions,omitempty"`
 }
 
@@ -198,10 +209,31 @@ func (r *Rule) SeverityOrDefault() string {
 	return r.Severity
 }
 func (r *Rule) Refs() []Ref {
-	if r.From == nil {
-		return nil
+	var refs []Ref
+	if r.From != nil {
+		refs = append(refs, Ref{"from", *r.From})
 	}
-	return []Ref{{"from", *r.From}}
+	for _, id := range r.Evidence {
+		refs = append(refs, Ref{"evidence", id})
+	}
+	return refs
+}
+
+// CaseDirs 返回按 expect 分组的夹具目录。
+func (r *Rule) CaseDirs(expect string) []string {
+	var out []string
+	for _, c := range r.Cases {
+		if c.Expect == expect {
+			out = append(out, c.Dir)
+		}
+	}
+	return out
+}
+
+// CasesComplete 报告对照用例两个方向是否都有。
+// 只证明「该过的过了」不算对照验证：一条永远 exit 0 的检查也能满足。
+func (r *Rule) CasesComplete() bool {
+	return len(r.CaseDirs("pass")) > 0 && len(r.CaseDirs("fail")) > 0
 }
 
 func (r *Rule) validate() error {
@@ -224,7 +256,17 @@ func (r *Rule) validate() error {
 			return fmt.Errorf("check.timeout_seconds 不能为负")
 		}
 	}
-	return refKindsMatch(r.Refs(), map[string]Kind{"from": KindDecision})
+	for i, c := range r.Cases {
+		switch c.Expect {
+		case "pass", "fail":
+		default:
+			return fmt.Errorf("cases[%d].expect %q 非法（应为 pass 或 fail）", i, c.Expect)
+		}
+		if err := validCaseDir(c.Dir); err != nil {
+			return fmt.Errorf("cases[%d].dir %q：%w", i, c.Dir, err)
+		}
+	}
+	return refKindsMatch(r.Refs(), map[string]Kind{"from": KindDecision, "evidence": KindEvidence})
 }
 
 // ---------- Memory ----------
@@ -308,6 +350,22 @@ func (m *Memory) validate() error {
 	})
 }
 
+// validCaseDir 挡住指向仓库外的夹具：对照验证只在仓库内的目录上跑。
+func validCaseDir(dir string) error {
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("不能为空")
+	}
+	if strings.HasPrefix(dir, "/") || strings.HasPrefix(dir, "~") {
+		return fmt.Errorf("必须是仓库相对路径")
+	}
+	for _, seg := range strings.Split(dir, "/") {
+		if seg == ".." {
+			return fmt.Errorf("不能包含 ..")
+		}
+	}
+	return nil
+}
+
 // ---------- Evidence ----------
 
 type EvidenceTarget struct {
@@ -366,6 +424,11 @@ func (e *Evidence) validate() error {
 	}
 	if e.Subject.IsZero() {
 		return fmt.Errorf("subject 必填")
+	}
+	switch e.Subject.Kind {
+	case KindDecision, KindRule, KindMemory:
+	default:
+		return fmt.Errorf("subject 只能是决策、规则或记忆，实际 %s", e.Subject)
 	}
 	return nil
 }

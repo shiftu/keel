@@ -42,6 +42,8 @@ func commands() []command {
 		{"note", "记一条候选记忆", cmdNote},
 		{"check", "按 target 验证对象、规则与语义变化", cmdCheck},
 		{"verify", "跑一次验证器，把结果记成证据", cmdVerify},
+		{"promote", "规则对照验证：candidate → active", cmdPromote},
+		{"retire", "撤回一条规则，保留原因与历史", cmdRetire},
 		{"task", "任务接续摘要：set / show / clear", cmdTask},
 		{"brief", "输出任务相关的上下文包", cmdBrief},
 		{"review", "进化报告：到期、候选、工作流建议", cmdReview},
