@@ -1,0 +1,42 @@
+[!unix] skip '规则夹具用 sh'
+
+# candidate 规则不执行：自动学习来的内容不能在检索或启动时就变成代码执行。
+# retired 同理。只有 active 才跑。
+
+exec keelrc check
+stdout 'keel-exit=0'
+stdout '通过'
+! stdout 'rule_failed'
+! exists ran-candidate.txt
+! exists ran-retired.txt
+
+-- .keel/keel.yaml --
+version: 1
+-- scripts/mark.sh --
+#!/bin/sh
+touch "$1"
+exit 1
+-- .keel/rules/R-11111111-2222-4333-8444-555555555555-cand.md --
+---
+schema: 1
+id: R-11111111-2222-4333-8444-555555555555
+title: 候选规则
+status: candidate
+scope: ["scripts/**"]
+check:
+  argv: ["sh", "scripts/mark.sh", "ran-candidate.txt"]
+---
+
+还没有获得执行授权。
+-- .keel/rules/R-22222222-3333-4444-8555-666666666666-ret.md --
+---
+schema: 1
+id: R-22222222-3333-4444-8555-666666666666
+title: 已退休规则
+status: retired
+scope: ["scripts/**"]
+check:
+  argv: ["sh", "scripts/mark.sh", "ran-retired.txt"]
+---
+
+已经不再强制。

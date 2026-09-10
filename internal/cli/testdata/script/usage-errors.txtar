@@ -1,0 +1,58 @@
+# 用法错误一律退出码 2，且不静默吞掉任何 token。
+
+# 没有子命令。
+exec keelrc
+stdout 'keel-exit=2'
+
+# 未知命令。
+exec keelrc nosuchcmd
+stdout 'keel-exit=2'
+stderr '未知命令'
+
+# 未知选项。
+exec keelrc check --nosuchflag
+stdout 'keel-exit=2'
+stderr '未知选项 --nosuchflag'
+
+# 选项缺少取值。
+exec keelrc check --target
+stdout 'keel-exit=2'
+stderr '缺少取值'
+
+# 非法 target。
+exec keelrc check --target nosuch
+stdout 'keel-exit=2'
+stderr '--target'
+
+# --commit-msg 不属于这个 target：报用法错误，不静默忽略。
+exec keelrc check --target worktree --commit-msg msg.txt
+stdout 'keel-exit=2'
+stderr '只在 --target commit-msg 时有意义'
+
+# --target commit-msg 必须给文件。
+exec keelrc check --target commit-msg
+stdout 'keel-exit=2'
+stderr '需要 --commit-msg'
+
+# --target range 必须给显式 base/head。
+exec keelrc check --target range
+stdout 'keel-exit=2'
+stderr '需要显式的 --base 与 --head'
+
+# check 不接受位置参数。
+exec keelrc check extra
+stdout 'keel-exit=2'
+stderr '最多接受 0 个位置参数'
+
+# decide 缺必填项。
+exec keelrc decide
+stdout 'keel-exit=2'
+exec keelrc decide '标题'
+stdout 'keel-exit=2'
+stderr '需要 --tag'
+exec keelrc decide '标题' --tag db
+stdout 'keel-exit=2'
+stderr '需要 --scope'
+
+-- .keel/keel.yaml --
+version: 1

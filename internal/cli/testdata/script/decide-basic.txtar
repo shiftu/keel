@@ -1,0 +1,32 @@
+[!unix] skip '夹具用 sh 读取随机文件名'
+
+cd repo
+
+# decide 写出带 canonical ID 的决策文件，并打印完整 ID 的 trailer。
+exec keel decide '用 SQLite 而不是 Postgres' --tag db,storage --scope 'internal/store/**' --by agent:claude
+stdout '\.keel/decisions/D-'
+stdout 'Decision: D-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+
+# 默认状态是 proposed：空模板不会被当成已定的结论。
+exec sh -c 'cat .keel/decisions/*.md'
+stdout 'schema: 1'
+stdout 'status: proposed'
+stdout 'by: agent:claude'
+
+exec keel check
+stdout '通过'
+
+# 从仓库子目录调用也能找到 .keel/，路径按仓库根输出。
+mkdir internal/store
+cd internal/store
+exec keel note '在子目录里也能记' --tag db
+stdout '^\.keel/memory/M-'
+
+# 仓库之外没有 .keel/：给出可执行的指引，而不是崩溃或误报通过。
+cd $WORK
+exec keelrc decide '标题' --tag t --scope 'x/**'
+stdout 'keel-exit=1'
+stderr 'keel init'
+
+-- repo/.keel/keel.yaml --
+version: 1

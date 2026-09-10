@@ -1,0 +1,11 @@
+# version 打印版本并成功退出。
+exec keel version
+stdout 'keel '
+
+exec keelrc version
+stdout 'keel-exit=0'
+
+# 多余的位置参数是用法错误，不是被忽略。
+exec keelrc version extra
+stdout 'keel-exit=2'
+stderr '用法错误'

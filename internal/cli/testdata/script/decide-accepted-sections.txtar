@@ -1,0 +1,28 @@
+[!unix] skip '夹具用 sh 读取随机文件名'
+
+# --status accepted 要求四段正文都非空；空 ADR 不能冒充已定的决策。
+exec keelrc decide '空的决策' --tag db --scope 'x/**' --status accepted
+stdout 'keel-exit=2'
+stderr '四段正文都非空'
+
+# 正文齐全时才能直接 accepted。
+stdin body.md
+exec keel decide '用 SQLite' --tag db --scope 'internal/store/**' --status accepted --body -
+stdout 'Decision: D-'
+exec sh -c 'cat .keel/decisions/*.md'
+stdout 'status: accepted'
+
+-- .keel/keel.yaml --
+version: 1
+-- body.md --
+## 背景
+单机部署，数据量小。
+
+## 决定
+用 SQLite。
+
+## 备选与理由
+Postgres 多一个进程要运维。
+
+## 后果与验证方式
+store 层不得出现 pgx 导入。

@@ -1,0 +1,45 @@
+[!unix] skip '夹具用 sh 读取随机文件名'
+
+# 审查 P1-06 的验收场景：
+# proposed 决策声明替代 accepted 决策时，旧决策必须继续生效。
+
+exec keel decide '改用 Postgres' --tag db --scope 'internal/store/**' --supersedes D-550e8400
+stdout 'Decision: D-'
+stderr '仍然有效'
+
+# 旧决策没有被提前撤销。
+grep 'status: accepted' .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md
+! grep 'superseded' .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md
+
+# 新决策只登记了替代意图。
+exec sh -c 'grep -l "改用 Postgres" .keel/decisions/*.md | head -1'
+stdout '\.keel/decisions/D-'
+
+exec keel check
+stdout '通过'
+
+-- .keel/keel.yaml --
+version: 1
+-- .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md --
+---
+schema: 1
+id: D-550e8400-e29b-41d4-a716-446655440000
+title: 用 SQLite 而不是 Postgres
+status: accepted
+date: 2026-09-10
+by: human
+tags: [db]
+scope: ["internal/store/**"]
+---
+
+## 背景
+单机部署。
+
+## 决定
+用 SQLite。
+
+## 备选与理由
+Postgres 要运维。
+
+## 后果与验证方式
+store 层不得出现 pgx。

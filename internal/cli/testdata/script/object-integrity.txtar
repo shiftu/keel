@@ -1,0 +1,97 @@
+# ID 重复、引用缺失、frontmatter 非法都必须报错。
+# canonical ID 永不重编号，所以重复只能靠报错暴露，不能自动改名。
+
+exec keelrc check --json
+stdout 'keel-exit=1'
+stdout '"code": "id_duplicate"'
+stdout '"code": "ref_missing"'
+stdout '"code": "frontmatter_invalid"'
+stdout '"schema": 1'
+stdout '"target": "worktree"'
+stdout '"status": "fail"'
+
+-- .keel/keel.yaml --
+version: 1
+-- .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-a.md --
+---
+schema: 1
+id: D-550e8400-e29b-41d4-a716-446655440000
+title: 甲
+status: accepted
+date: 2026-09-10
+by: human
+tags: [x]
+scope: ["a/**"]
+---
+
+## 背景
+a
+
+## 决定
+a
+
+## 备选与理由
+a
+
+## 后果与验证方式
+a
+-- .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-b.md --
+---
+schema: 1
+id: D-550e8400-e29b-41d4-a716-446655440000
+title: 乙
+status: accepted
+date: 2026-09-10
+by: human
+tags: [y]
+scope: ["b/**"]
+---
+
+## 背景
+b
+
+## 决定
+b
+
+## 备选与理由
+b
+
+## 后果与验证方式
+b
+-- .keel/decisions/D-99999999-8888-4777-8666-555555555555-c.md --
+---
+schema: 1
+id: D-99999999-8888-4777-8666-555555555555
+title: 丙
+status: accepted
+date: 2026-09-10
+by: human
+tags: [z]
+scope: ["c/**"]
+supersedes: [D-00000000-0000-4000-8000-000000000000]
+---
+
+## 背景
+c
+
+## 决定
+c
+
+## 备选与理由
+c
+
+## 后果与验证方式
+c
+-- .keel/memory/M-33333333-4444-4555-8666-777777777777-bad.md --
+---
+schema: 1
+id: M-33333333-4444-4555-8666-777777777777
+kind: gotcha
+status: candidate
+summary: 字段拼错
+tags: [x]
+date: 2026-09-10
+by: human
+nosuchfield: true
+---
+正文

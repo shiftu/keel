@@ -1,0 +1,78 @@
+[!unix] skip '夹具用 sh 读取随机文件名'
+
+# 只有新决策以 accepted 落地时，替代才发生，且两端引用一次写完。
+# 旧决策有派生的 active 规则，所以必须说明规则去向。
+
+stdin body.md
+exec keelrc decide '改用 Postgres' --tag db --scope 'internal/store/**' --supersedes D-550e8400 --status accepted --body -
+stdout 'keel-exit=2'
+stderr '必须说明这些派生规则的去向'
+
+# 旧决策没有被半路改坏：失败时整笔回滚。
+grep 'status: accepted' .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md
+
+# 带上规则迁移说明后才能完成替代。
+stdin body.md
+exec keel decide '改用 Postgres' --tag db --scope 'internal/store/**' --supersedes D-550e8400 --status accepted --rule-migration R-7c9e6679:retired --body -
+stdout 'Decision: D-'
+
+grep 'status: superseded' .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md
+grep 'superseded_by:' .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md
+
+# 规则依据失效会被报出来，但规则不会被 keel 自动改状态。
+exec keelrc check
+stdout 'keel-exit=0'
+stdout 'rule_basis_invalid'
+grep 'status: active' .keel/rules/R-7c9e6679-7425-40de-944b-e07fc1f90ae7-no-pg.md
+
+-- .keel/keel.yaml --
+version: 1
+-- body.md --
+## 背景
+数据量增长。
+
+## 决定
+改用 Postgres。
+
+## 备选与理由
+继续 SQLite 无法多写者。
+
+## 后果与验证方式
+迁移脚本通过后删除旧规则。
+-- .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-sqlite.md --
+---
+schema: 1
+id: D-550e8400-e29b-41d4-a716-446655440000
+title: 用 SQLite 而不是 Postgres
+status: accepted
+date: 2026-09-10
+by: human
+tags: [db]
+scope: ["internal/store/**"]
+---
+
+## 背景
+单机部署。
+
+## 决定
+用 SQLite。
+
+## 备选与理由
+Postgres 要运维。
+
+## 后果与验证方式
+store 层不得出现 pgx。
+-- .keel/rules/R-7c9e6679-7425-40de-944b-e07fc1f90ae7-no-pg.md --
+---
+schema: 1
+id: R-7c9e6679-7425-40de-944b-e07fc1f90ae7
+title: store 层不得依赖 Postgres 驱动
+status: active
+scope: ["internal/store/**"]
+severity: warn
+from: D-550e8400-e29b-41d4-a716-446655440000
+---
+
+store 只认 SQLite。
+-- internal/store/db.go --
+package store

@@ -1,0 +1,23 @@
+# 审查 P1-04：不允许按 proven 计数自动扩大自决范围。
+# 配置里打开 auto_promote 直接是错误，而不是被静默接受。
+
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'auto_promote_enabled'
+stdout '不按 proven 计数自动扩大自决范围'
+
+# 核心字段拼错也必须报错，不能静默保留后改变行为。
+cp typo.yaml .keel/keel.yaml
+exec keelrc check
+stdout 'keel-exit=1'
+stderr 'keel.yaml'
+
+-- .keel/keel.yaml --
+version: 1
+workflow:
+  default_level: 1
+  auto_promote: true
+-- typo.yaml --
+version: 1
+workflow:
+  defualt_level: 2

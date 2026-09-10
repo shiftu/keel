@@ -1,0 +1,62 @@
+[!unix] skip '规则夹具用 sh'
+
+# 审查 P1-07 的验收：`! grep` 在目录不存在时会把错误翻转成成功。
+# keel 只接受 argv，并且只有退出码恰好为 1 才算 fail；
+# 其余非零一律是 error —— 检查不了 ≠ 检查通过。
+
+# 1) internal/store 还不存在：脚本退出 2 → rule_error，整体不通过。
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'rule_error'
+! stdout 'rule_failed'
+stdout '执行不了不等于通过'
+
+# 2) 目录存在且干净：退出 0 → pass。
+mkdir internal/store
+cp clean.go internal/store/db.go
+exec keelrc check
+stdout 'keel-exit=0'
+stdout '通过'
+
+# 3) 出现禁用导入：退出 1 → rule_failed。
+cp bad.go internal/store/bad.go
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'rule_failed'
+
+-- .keel/keel.yaml --
+version: 1
+-- scripts/no-pg.sh --
+#!/bin/sh
+# 与 docs/design/fixtures/shell-grep-negation 里的 check() 同构：
+# 0 = 通过，1 = 发现违规，其余 = 检查不了。
+if [ ! -d internal/store ]; then
+  echo "internal/store 不存在" >&2
+  exit 2
+fi
+grep -rlnE 'pgx|lib/pq' internal/store >/dev/null 2>&1
+case $? in
+  0) exit 1 ;;
+  1) exit 0 ;;
+  *) exit 2 ;;
+esac
+-- clean.go --
+package store
+-- bad.go --
+package store
+
+import _ "github.com/jackc/pgx/v5"
+-- .keel/rules/R-7c9e6679-7425-40de-944b-e07fc1f90ae7-no-pg.md --
+---
+schema: 1
+id: R-7c9e6679-7425-40de-944b-e07fc1f90ae7
+title: store 层不得依赖 Postgres 驱动
+status: active
+scope: ["internal/store/**", "scripts/**"]
+severity: error
+check:
+  argv: ["sh", "scripts/no-pg.sh"]
+  timeout_seconds: 20
+---
+
+store 只认 SQLite。

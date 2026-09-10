@@ -1,0 +1,55 @@
+[!unix] skip '夹具用 sh 读取随机文件名'
+
+# 新记忆一律是 candidate：可检索，但不以命令式口吻当成项目规则。
+exec keel note 'SQLite WAL 在 NFS 上会锁失败' --tag storage --path internal/store/db.go --by agent:claude
+stdout '\.keel/memory/M-'
+stderr 'candidate'
+
+exec sh -c 'cat .keel/memory/*.md'
+stdout 'status: candidate'
+stdout 'kind: gotcha'
+
+# 正文与位置参数不能同时给。
+stdin long.txt
+exec keelrc note '正文' --tag t --body -
+stdout 'keel-exit=2'
+stderr '不能同时给'
+
+# 超长正文拒收：够得上一次选择的应该走 decide。
+stdin long.txt
+exec keelrc note --tag t --body -
+stdout 'keel-exit=2'
+stderr 'keel decide'
+
+# 非法 kind。
+exec keelrc note '内容' --tag t --kind nosuch
+stdout 'keel-exit=2'
+stderr '--kind'
+
+exec keel check
+stdout '通过'
+
+-- .keel/keel.yaml --
+version: 1
+-- long.txt --
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
