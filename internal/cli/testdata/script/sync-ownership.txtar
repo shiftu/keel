@@ -1,0 +1,62 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# 1. 手改托管块 → 报冲突，且一个文件都不写。
+exec sh -c 'sed -i.bak "s/本仓库用 keel/【我手改了这一行】本仓库用 keel/" CLAUDE.md && rm -f CLAUDE.md.bak'
+exec keelrc sync
+stdout 'keel-exit=1'
+stderr 'keel 块在上次生成后被手工改过'
+grep '我手改了这一行' CLAUDE.md
+
+# 还原成生成内容后恢复正常。
+exec sh -c 'sed -i.bak "s/【我手改了这一行】//" CLAUDE.md && rm -f CLAUDE.md.bak'
+exec keel sync
+
+# 2. 块外的内容原样保留。
+exec sh -c 'printf "\n# 我自己的说明\n这一段不归 keel 管。\n" >> CLAUDE.md'
+exec keel sync
+grep '我自己的说明' CLAUDE.md
+grep '<!-- keel:begin -->' CLAUDE.md
+
+# 3. 用户自己的 hook 条目和无关字段都要留着。
+cp settings-with-user-hook.json .claude/settings.json
+exec keel sync
+grep 'my-own-tool' .claude/settings.json
+grep 'keel hook claude session-start' .claude/settings.json
+grep 'permissions' .claude/settings.json
+
+# 4. keel 写过的条目被改掉 → 报冲突，不默默重写。
+cp settings-tampered.json .claude/settings.json
+exec keelrc sync
+stdout 'keel-exit=1'
+stderr 'keel 写过的条目被改过或删掉了'
+
+-- settings-with-user-hook.json --
+{
+  "permissions": {
+    "allow": ["Bash(ls:*)"]
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "my-own-tool" } ] },
+      { "hooks": [ { "command": "keel hook claude session-start", "type": "command" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "command": "keel hook claude stop", "type": "command" } ] }
+    ]
+  }
+}
+-- settings-tampered.json --
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "command": "keel hook claude session-start --evil", "type": "command" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "command": "keel hook claude stop", "type": "command" } ] }
+    ]
+  }
+}

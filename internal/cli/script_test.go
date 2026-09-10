@@ -3,6 +3,7 @@ package cli_test
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
@@ -29,5 +30,16 @@ func TestScript(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir:                 "testdata/script",
 		RequireExplicitExec: true,
+		// 把 git 与宿主的全局/系统配置隔离开，脚本里的仓库行为才是确定的。
+		Setup: func(e *testscript.Env) error {
+			none := filepath.Join(e.WorkDir, "no-such-gitconfig")
+			e.Setenv("GIT_CONFIG_GLOBAL", none)
+			e.Setenv("GIT_CONFIG_SYSTEM", none)
+			e.Setenv("GIT_AUTHOR_NAME", "keel test")
+			e.Setenv("GIT_AUTHOR_EMAIL", "keel@test")
+			e.Setenv("GIT_COMMITTER_NAME", "keel test")
+			e.Setenv("GIT_COMMITTER_EMAIL", "keel@test")
+			return nil
+		},
 	})
 }

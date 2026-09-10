@@ -323,7 +323,7 @@ templates/                go:embed：三个内置 skill、hook 脚本、CLAUDE.m
 
 brief/note 前置到 M1，因为记忆的写入与召回属于产品核心。自动扩大自决范围后置到 M3 且仍受项目策略上限约束。
 
-### M1 切片（防止规格膨胀吃掉第一版）
+### M1 切片（防止规格膨胀吃掉第一版）· 已实现
 
 v2 规格是目标形态，不是 M1 的实现清单。M1 只做下表左列；右列的字段可以出现在 frontmatter 里但内核不解释。
 
@@ -342,6 +342,15 @@ v2 规格是目标形态，不是 M1 的实现清单。M1 只做下表左列；�
 | `keel hook` session-start / stop（exit 0 + JSON） | 去重只按 session + 信号摘要，turn id 后置 |
 
 原则：M1 结束时，v1 的三个承诺必须成立——决策进仓库、坏提交被挡、Claude 写的经验 Codex 能召回。其余都是 M2+ 的证据与进化层。
+
+**实现状态（2026-09-10）：** M0 与 M1 已实现并有测试。与上表的两处偏差：
+
+- `check --target range` 一并实现了（原计划 M2）。它与 index 共用同一套信号机制，
+  多写十行就能让 CI 用上；不做的话 `keel check --target range` 在 CI 里只会报错。
+- `knowledge/INDEX.md` 与 `evidence/` 的产出没做，`keel review` 仍是 M3。
+  `evidence/` 目录会被 `init` 建出来，但 M1 不产生任何证据记录；
+  因此 `policy.Precedents` 的 `Verified` 恒为 false，手写 proven 不会提高自决上限——
+  这正是审查 P1-04 要的行为。
 
 首批验收场景（实现时必须可观察）：
 

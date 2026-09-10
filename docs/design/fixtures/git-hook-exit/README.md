@@ -19,3 +19,12 @@
 
 实现 `init` 安装 hook 时，生成文本必须与 `hook-new.sh` 同构（if + `exit $?`，无尾部 `|| true`）。
 另外五种安装情形（已有 hook 失败、非 shell hook、hooksPath、worktree、未安装）见 formats.md §8.1 / §9.5，实现阶段用 testscript 覆盖。
+
+## 已迁移
+
+M1 实现后，这些断言已经变成 Go 测试：`internal/gitx/hooks_test.go`
+（`TestHookPropagatesFailure` 覆盖失败传播、未安装放行、执行位；
+`TestForeignHookIsNotClobbered` 覆盖已有 shell hook 与 `--adopt-hooks` 串联；
+`TestNonShellHookIsReported` 覆盖非 shell hook；
+`TestHooksPathIsRespected` 覆盖 `core.hooksPath`）。
+本目录保留为审查原始复现记录。

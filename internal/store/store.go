@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // DirName 是仓库内数据目录名。
@@ -258,8 +259,9 @@ func Slugify(title string) string {
 	var b strings.Builder
 	prevDash := false
 	for _, r := range strings.ToLower(strings.TrimSpace(title)) {
+		// unicode.IsLetter 认汉字，同时把中英文标点挡在文件名之外。
 		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r > 0x7f:
+		case unicode.IsLetter(r), unicode.IsDigit(r):
 			b.WriteRune(r)
 			prevDash = false
 		default:

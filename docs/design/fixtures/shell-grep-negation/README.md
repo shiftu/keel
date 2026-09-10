@@ -23,3 +23,11 @@ check: "! grep -rlnE 'pgx|lib/pq' internal/store"
 ```
 ./run.sh   # exit 0
 ```
+
+## 已迁移
+
+M0 实现后，这条契约已经变成 Go 测试与 testscript 夹具：
+`internal/check/exec_test.go` 的 `TestRunRuleOutcomes`，
+以及 `internal/cli/testdata/script/rule-exec-outcomes.txtar`。
+规则只接受 `argv`，退出码 0=pass、1=fail、其余=error。
+本目录保留为审查原始复现记录。

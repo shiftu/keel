@@ -1,0 +1,124 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init
+exec git add -A
+exec git commit -qm 'chore: init'
+
+# 决策已经在历史里，本次只改 go.mod：覆盖只能靠 trailer。
+cp go.mod.new go.mod
+exec git add go.mod
+
+# 1. 没有 trailer → 新增依赖没人解释。
+exec keelrc check --target commit-msg --commit-msg msg-plain.txt
+stdout 'keel-exit=1'
+stdout 'unexplained_dependency'
+
+# 2. 正文里长得像 trailer 的字符串不算引用：用 git interpret-trailers 解析。
+exec keelrc check --target commit-msg --commit-msg msg-inbody.txt
+stdout 'keel-exit=1'
+stdout 'unexplained_dependency'
+! stdout 'trailer_unknown_ref'
+
+# 3. 短前缀不是合法 trailer。
+exec keelrc check --target commit-msg --commit-msg msg-short.txt
+stdout 'keel-exit=1'
+stdout 'trailer_unknown_ref'
+
+# 4. 引用不存在的 ID。
+exec keelrc check --target commit-msg --commit-msg msg-missing.txt
+stdout 'keel-exit=1'
+stdout 'trailer_unknown_ref'
+
+# 5. 引用一条空的 proposed 决策：对象在，但不能作为覆盖。
+exec keelrc check --target commit-msg --commit-msg msg-proposed.txt
+stdout 'keel-exit=1'
+stdout 'trailer_not_usable'
+
+# 6. 引用覆盖 go.mod 的 accepted 决策 → 通过。
+exec keelrc check --target commit-msg --commit-msg msg-good.txt
+stdout 'keel-exit=0'
+stdout '通过'
+
+-- go.mod --
+module demo
+
+go 1.27.0
+-- go.mod.new --
+module demo
+
+go 1.27.0
+
+require github.com/some/dep v1.2.3
+-- .keel/keel.yaml --
+version: 1
+tools: [claude]
+gate:
+  watch_top_level_dirs: false
+-- .keel/decisions/D-550e8400-e29b-41d4-a716-446655440000-dep.md --
+---
+schema: 1
+id: D-550e8400-e29b-41d4-a716-446655440000
+title: 引入 some/dep
+status: accepted
+date: 2026-09-10
+by: human
+tags: [dependency]
+scope: ["go.mod"]
+---
+
+## 背景
+需要 X 能力。
+
+## 决定
+引入 github.com/some/dep。
+
+## 备选与理由
+自己写成本更高。
+
+## 后果与验证方式
+单测覆盖调用点。
+-- .keel/decisions/D-99999999-8888-4777-8666-555555555555-empty.md --
+---
+schema: 1
+id: D-99999999-8888-4777-8666-555555555555
+title: 还没想好
+status: proposed
+date: 2026-09-10
+by: human
+tags: [dependency]
+scope: ["go.mod"]
+---
+
+## 背景
+
+## 决定
+
+## 备选与理由
+
+## 后果与验证方式
+-- msg-plain.txt --
+feat: 引入依赖
+-- msg-inbody.txt --
+feat: 引入依赖
+
+我在正文里写了 Decision: D-550e8400-e29b-41d4-a716-446655440000 但那不是 trailer。
+
+Signed-off-by: someone <a@b.c>
+-- msg-short.txt --
+feat: 引入依赖
+
+Decision: D-550e8400
+-- msg-missing.txt --
+feat: 引入依赖
+
+Decision: D-00000000-0000-4000-8000-000000000000
+-- msg-proposed.txt --
+feat: 引入依赖
+
+Decision: D-99999999-8888-4777-8666-555555555555
+-- msg-good.txt --
+feat: 引入依赖
+
+Decision: D-550e8400-e29b-41d4-a716-446655440000

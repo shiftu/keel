@@ -1,0 +1,48 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+mkdir repo
+cd repo
+exec git init -q
+exec keel init --tools claude,codex
+
+# 两家工具各自的稳定协议块。
+grep '<!-- keel:begin -->' CLAUDE.md
+grep '<!-- keel:begin -->' AGENTS.md
+grep 'keel why --path' CLAUDE.md
+grep 'keel why --path' AGENTS.md
+
+# 静态文件里不放会过期的 proven 计数表；动态状态只从 brief 来。
+! grep '\| proven \|' CLAUDE.md
+! grep '^\| tag' CLAUDE.md
+grep 'keel brief' CLAUDE.md
+
+# 三个内置技能分发到两边。
+exists .keel/skills/keel-decide/SKILL.md
+exists .claude/skills/keel-decide/SKILL.md
+exists .agents/skills/keel-decide/SKILL.md
+
+# 产物清单记录了所有权与 adapter schema 版本。
+grep 'adapter_schema' .keel/generated.yaml
+grep 'owned: keel:begin\.\.keel:end' .keel/generated.yaml
+
+# git hook 装好了，并且传播退出码。
+exists .git/hooks/pre-commit
+grep 'exit \$\?' .git/hooks/pre-commit
+! grep '\|\| true' .git/hooks/pre-commit
+
+# intent.md 是骨架，keel 不猜项目目标。
+grep '待补充' .keel/intent.md
+
+# sync 幂等。
+exec keel sync --dry-run
+stdout '无变化'
+exec keel sync
+exec keel sync --dry-run
+stdout '无变化'
+
+# 不在 git 仓库里时，init 是用法错误。
+cd $WORK
+exec keelrc init
+stdout 'keel-exit=2'
+stderr 'git 仓库'

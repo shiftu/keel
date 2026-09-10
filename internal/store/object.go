@@ -406,3 +406,12 @@ func (d *Decision) SetBodyForValidation(body string) { d.meta.body = body }
 
 // ValidMemoryKind 供 CLI 校验 --kind。
 func ValidMemoryKind(k MemoryKind) bool { return validMemoryKind(k) }
+
+// Body 返回对象正文，供渲染软规则等场景使用。
+func (r *Rule) Body() string { return r.meta.body }
+
+// Body 返回记忆正文。
+func (m *Memory) Body() string { return m.meta.body }
+
+// Body 返回决策正文。
+func (d *Decision) Body() string { return d.meta.body }

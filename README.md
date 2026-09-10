@@ -11,12 +11,17 @@ keel 把项目目标、开发约定、任务经验和验证证据保存在 git �
   扩大自决范围是有证据之后的结果，不是记录条数的副作用。
 
 ```
-keel init        keel decide "…" --tag db --scope 'internal/store/**'
-keel sync        keel why --path internal/store/
-keel check       keel note "…" --tag db
-keel brief       keel review
+keel init                                    建 .keel/、装 git hooks、生成工具文件
+keel sync                                    .keel/ → CLAUDE.md / AGENTS.md / skills / MCP / hooks
+keel decide "…" --tag db --scope 'internal/store/**' --status accepted
+keel why --path internal/store/db.go         改这里之前先看什么
+keel note "…" --tag db                       记一条候选经验
+keel brief --task "…" --path <路径>           任务相关的上下文包
+keel check --target index                    验证真正要提交的内容
 ```
 
-状态：设计阶段（v2，已吸收架构审查）。设计见 [docs/design/design.md](docs/design/design.md)，
+安装、上手和每个命令的用法见 [docs/usage.md](docs/usage.md)。
+
+状态：M0（协议）与 M1（统一底座）已实现，`go test ./...` 全绿；M2 起的证据、任务接续与受控进化未做。设计见 [docs/design/design.md](docs/design/design.md)，
 格式与命令规格见 [docs/design/formats.md](docs/design/formats.md)，
 审查原文见 [docs/design/architecture-review.md](docs/design/architecture-review.md)。

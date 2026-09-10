@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
@@ -31,5 +34,16 @@ func TestFileNameAndSlugRoundTrip(t *testing.T) {
 	}
 	if got := slugFromFilename(FileName(id, "")); got != "" {
 		t.Errorf("无 slug 时应为空，得到 %q", got)
+	}
+}
+
+// 中英文标点不能进文件名。
+func TestSlugifyDropsPunctuation(t *testing.T) {
+	got := Slugify("SQLite WAL 在 NFS 上会锁失败，测试目录必须在本地盘")
+	if strings.ContainsAny(got, "，。、：；！？,.;:!?") {
+		t.Errorf("slug 里有标点：%q", got)
+	}
+	if !strings.Contains(got, "sqlite") {
+		t.Errorf("slug 丢了内容：%q", got)
 	}
 }

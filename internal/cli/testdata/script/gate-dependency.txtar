@@ -1,0 +1,75 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+exec git add -A
+exec git commit -qm 'chore: init'
+
+# 新增依赖，没有任何解释 → 提交验证失败。
+cp go.mod.new go.mod
+exec git add go.mod
+exec keelrc check --target index
+stdout 'keel-exit=1'
+stdout 'unexplained_dependency'
+
+# 新建一个不相关的空 proposed ADR：不算覆盖。
+exec keel decide '无关的空决策' --tag misc --scope 'docs/**'
+exec git add .keel
+exec keelrc check --target index
+stdout 'keel-exit=1'
+stdout 'unexplained_dependency'
+
+# 覆盖 go.mod 的 accepted 决策 → 通过。
+stdin body.md
+exec keel decide '引入 some/dep 做 X' --tag dependency --scope 'go.mod' --status accepted --body -
+exec git add .keel
+exec keelrc check --target index
+stdout 'keel-exit=0'
+stdout '通过'
+
+# 只改清单格式、不动依赖集合，不该被报成新增依赖。
+cp go.mod.reformat go.mod
+exec git add go.mod
+exec keelrc check --target index
+stdout 'keel-exit=0'
+
+# keel 不解析的清单只报待判断信号，不谎称能证明新增依赖。
+cp cargo-src.txt Cargo.toml
+exec git add Cargo.toml
+exec keelrc check --target index
+stdout 'manifest_unparsed'
+
+-- go.mod --
+module demo
+
+go 1.27.0
+-- go.mod.new --
+module demo
+
+go 1.27.0
+
+require github.com/some/dep v1.2.3
+-- go.mod.reformat --
+module demo
+
+go 1.27.0
+
+require (
+	github.com/some/dep v1.2.3
+)
+-- cargo-src.txt --
+[package]
+name = "demo"
+-- body.md --
+## 背景
+需要 X 能力。
+
+## 决定
+引入 github.com/some/dep。
+
+## 备选与理由
+自己写要两周，收益不抵成本。
+
+## 后果与验证方式
+锁定小版本；单测覆盖调用点。

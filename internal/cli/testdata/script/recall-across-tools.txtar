@@ -1,0 +1,46 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+# M1 验收：Claude 写下的经验，Codex 侧要能正确召回。
+# 两边读的是同一个仓库，所以这件事靠 .keel/ 成立，不靠任何服务。
+
+exec git init -q
+exec keel init --tools claude,codex
+
+exec keel note 'SQLite WAL 在 NFS 上会锁失败，测试临时目录必须在本地盘' --tag storage --path 'internal/store/**' --by agent:claude --condition environment=仅本地盘
+stderr 'candidate'
+
+# Codex 的 SessionStart 拿到同一条经验。
+stdin session-start.json
+exec keel hook codex session-start
+stdout 'NFS'
+# 未验证的记忆要带上「候选」标签，不能被当成项目规则。
+stdout '候选（未验证）'
+
+# 按路径召回。
+exec keel why --path internal/store/db.go
+stdout 'SQLite WAL'
+stdout 'scope internal/store/\*\* 覆盖该路径'
+
+# 按关键词召回。
+exec keel why --query NFS
+stdout 'SQLite WAL'
+
+# 不相关的路径不该被打扰。
+exec keel why --path web/index.html
+stdout '没有找到'
+
+# why 需要 --path 或 --query 之一。
+exec keelrc why
+stdout 'keel-exit=2'
+
+# 上下文预算是硬约束，超出时说明被截断，不静默丢内容。
+exec keel brief --path internal/store/db.go --budget 400
+stdout '已截断'
+
+exec keel brief --path internal/store/db.go --json
+stdout '"why_selected"'
+stdout '"kind": "memory"'
+
+-- session-start.json --
+{"session_id":"s1","hook_event_name":"SessionStart","turn_id":"t1"}

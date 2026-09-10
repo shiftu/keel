@@ -1,0 +1,51 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+# 审查 P1-03 的验收：暂存的是坏代码，工作树里有未暂存的修复。
+# 工作树检查通过不能替 index 背书。
+
+exec git init -q
+exec keel init
+mkdir internal/store
+cp bad.go internal/store/db.go
+exec git add -A
+
+# 工作树里把它修好，但不暂存。
+cp clean.go internal/store/db.go
+
+exec keelrc check --target worktree
+stdout 'keel-exit=0'
+
+exec keelrc check --target index
+stdout 'keel-exit=1'
+stdout 'rule_failed'
+
+-- bad.go --
+package store
+
+import _ "github.com/jackc/pgx/v5"
+-- clean.go --
+package store
+-- scripts/no-pg.sh --
+#!/bin/sh
+if [ ! -d internal/store ]; then exit 2; fi
+grep -rlnE 'pgx|lib/pq' internal/store >/dev/null 2>&1
+case $? in 0) exit 1 ;; 1) exit 0 ;; *) exit 2 ;; esac
+-- .keel/keel.yaml --
+version: 1
+tools: [claude]
+gate:
+  watch_top_level_dirs: false
+-- .keel/rules/R-7c9e6679-7425-40de-944b-e07fc1f90ae7-no-pg.md --
+---
+schema: 1
+id: R-7c9e6679-7425-40de-944b-e07fc1f90ae7
+title: store 层不得依赖 Postgres 驱动
+status: active
+scope: ["internal/store/**"]
+severity: error
+check:
+  argv: ["sh", "scripts/no-pg.sh"]
+---
+
+store 只认 SQLite。

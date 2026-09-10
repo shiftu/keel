@@ -1,0 +1,72 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude,codex
+
+# session-start 是只读的：给上下文，不跑项目检查，永远 exit 0 + 合法 JSON。
+stdin session-start.json
+exec keelrc hook claude session-start
+stdout 'keel-exit=0'
+stdout '"hookSpecificOutput"'
+stdout '"additionalContext"'
+stdout '"adapter_status"'
+
+stdin session-start.json
+exec keelrc hook codex session-start
+stdout 'keel-exit=0'
+stdout '"hookSpecificOutput"'
+
+# 有可修正的问题时，Stop 请求一次继续。
+cp broken.md .keel/memory/M-33333333-4444-4555-8666-777777777777-broken.md
+stdin stop.json
+exec keelrc hook claude stop
+stdout 'keel-exit=0'
+stdout '"decision":"block"'
+stdout 'frontmatter_invalid'
+
+# 同一个未解决问题不再重复要求继续：去重只抑制重复反馈。
+stdin stop.json
+exec keelrc hook claude stop
+stdout 'keel-exit=0'
+! stdout '"decision":"block"'
+stderr '不再重复要求继续'
+
+# 但它绝不会把 fail 改成 pass：提交检查照样拦。
+exec keelrc check
+stdout 'keel-exit=1'
+stdout 'frontmatter_invalid'
+
+# stop_hook_active 时直接结束循环。
+exec sh -c 'rm -rf .keel/cache/stop'
+stdin stop-active.json
+exec keelrc hook claude stop
+stdout 'keel-exit=0'
+! stdout '"decision":"block"'
+
+# 未知适配器 / 事件是用法错误，且不会吐出半截 decision 对象。
+exec keelrc hook nosuch session-start
+stdout 'keel-exit=2'
+! stdout 'decision'
+exec keelrc hook claude nosuch-event
+stdout 'keel-exit=2'
+
+-- session-start.json --
+{"session_id":"s1","hook_event_name":"SessionStart","turn_id":"t1"}
+-- stop.json --
+{"session_id":"s1","hook_event_name":"Stop","turn_id":"t1","stop_hook_active":false}
+-- stop-active.json --
+{"session_id":"s1","hook_event_name":"Stop","turn_id":"t2","stop_hook_active":true}
+-- broken.md --
+---
+schema: 1
+id: M-33333333-4444-4555-8666-777777777777
+kind: gotcha
+status: candidate
+summary: 字段拼错
+tags: [x]
+date: 2026-09-10
+by: human
+nosuchfield: true
+---
+正文

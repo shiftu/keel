@@ -1,10 +1,11 @@
 package cli
 
 import (
-	"fmt"
+	"os"
 	"strings"
 
 	"github.com/shiftu/keel/internal/check"
+	"github.com/shiftu/keel/internal/gitx"
 	"github.com/shiftu/keel/internal/store"
 )
 
@@ -104,6 +105,10 @@ func printHuman(e *env, res *check.Result) {
 			warns++
 		}
 	}
+	// --quiet 是给 git hook 用的：通过时一个字都不输出，失败时照常说清楚。
+	if e.quiet && res.Status == check.StatusPass {
+		return
+	}
 	if !e.quiet {
 		e.io.Printf("keel check · target=%s\n\n", res.Target)
 	}
@@ -124,8 +129,10 @@ func printHuman(e *env, res *check.Result) {
 			e.io.Printf("    › %s\n", f.Fix)
 		}
 	}
-	for _, n := range res.Notes {
-		e.io.Printf("· %s\n", n)
+	if !e.quiet {
+		for _, n := range res.Notes {
+			e.io.Printf("· %s\n", n)
+		}
 	}
 	if e.quiet {
 		return
@@ -147,23 +154,125 @@ func printHuman(e *env, res *check.Result) {
 	}
 }
 
-// unimplemented 是 M0 阶段还没有实现的命令。它不是用法错误。
-func unimplemented(name, milestone string) error {
-	return fmt.Errorf("%s 尚未实现（计划在 %s）；当前可用：decide、note、check、version", name, milestone)
-}
-
-func cmdInit(e *env, args []string) error   { return unimplemented("keel init", "M1") }
-func cmdSync(e *env, args []string) error   { return unimplemented("keel sync", "M1") }
-func cmdWhy(e *env, args []string) error    { return unimplemented("keel why", "M1") }
-func cmdBrief(e *env, args []string) error  { return unimplemented("keel brief", "M1") }
-func cmdReview(e *env, args []string) error { return unimplemented("keel review", "M3") }
-func cmdHook(e *env, args []string) error   { return unimplemented("keel hook", "M1") }
-
-// runTargetChecks 在 M0 只支持 worktree；index/commit-msg/range 属于 M1。
+// runTargetChecks 按 target 决定在哪一份快照上验证。
+//
+// worktree / index / commit-msg / range 看的是不同内容，绝不互相替代：
+// 工作树里改好但没暂存，不能让 index 通过。
 func runTargetChecks(e *env, st *store.Store, cfg store.Config, set *store.Set,
-	res *check.Result, t check.Target, commitMsg, base, head string) error {
-	if t != check.TargetWorktree {
-		return unimplemented("keel check --target "+string(t), "M1")
+	res *check.Result, t check.Target, commitMsgFile, base, head string) error {
+	if t == check.TargetWorktree {
+		return nil // 只读诊断：对象检查与规则已经跑过
+	}
+
+	repo, err := gitx.Open(st.Root)
+	if err != nil {
+		res.AddError(check.Finding{
+			Code:    check.CodeIndexSnapshotFailed,
+			Message: "提交验证需要 git 仓库：" + err.Error(),
+		})
+		return nil
+	}
+
+	switch t {
+	case check.TargetIndex, check.TargetCommitMsg:
+		cov := check.Coverage{}
+		if t == check.TargetCommitMsg {
+			msg, err := os.ReadFile(commitMsgFile)
+			if err != nil {
+				return usagef("读取 --commit-msg 文件失败：%v", err)
+			}
+			cov.Trailers = check.TrailerDecisions(repo, set, string(msg), res)
+		}
+		return checkIndex(e, st, cfg, res, repo, cov)
+
+	case check.TargetRange:
+		files, err := repo.RangeFiles(base, head)
+		if err != nil {
+			res.AddError(check.Finding{Code: check.CodeIndexSnapshotFailed, Message: err.Error()})
+			return nil
+		}
+		cs := check.ChangeSet{Repo: repo, Files: files, BeforeRev: base, AfterRev: head}
+		check.Signals(st, cfg, set, res, cs, coverageFromFiles(st, set, files, nil))
+		return nil
 	}
 	return nil
+}
+
+// checkIndex 在暂存区快照上验证。绝不 stash / reset 用户工作树。
+func checkIndex(e *env, st *store.Store, cfg store.Config, res *check.Result,
+	repo *gitx.Repo, cov check.Coverage) error {
+
+	dir, cleanup, err := repo.SnapshotIndex()
+	if err != nil {
+		// 拿不到可靠的暂存快照就明说，不拿工作树结果冒充。
+		res.AddError(check.Finding{
+			Code:    check.CodeIndexSnapshotFailed,
+			Message: "无法导出暂存区快照：" + err.Error(),
+			Fix:     "先解决 git 报的问题；keel 不会用工作树结果代替 index 验证",
+		})
+		return nil
+	}
+	defer cleanup()
+
+	files, err := repo.StagedFiles()
+	if err != nil {
+		res.AddError(check.Finding{Code: check.CodeIndexSnapshotFailed, Message: err.Error()})
+		return nil
+	}
+	if cov.ChangedDecisionPaths == nil {
+		cov = coverageFromFiles(st, nil, files, cov.Trailers)
+	}
+
+	// 对象与规则都用同一份快照，避免工作树里的修复替暂存的坏代码背书。
+	snap := &store.Store{Root: dir}
+	if _, err := os.Stat(snap.KeelDir()); err == nil {
+		snapSet, err := snap.Load()
+		if err != nil {
+			return err
+		}
+		snapCfg := cfg
+		if c, err := snap.LoadConfig(); err == nil {
+			snapCfg = c
+		}
+		res.Notes = append(res.Notes, "对象与规则在暂存区快照上验证")
+		check.Objects(snap, snapCfg, snapSet, res)
+		check.Rules(snap, snapSet, res)
+		cov.ChangedDecisionPaths = changedDecisionPaths(files)
+		check.Signals(st, snapCfg, snapSet, res, check.ChangeSet{
+			Repo: repo, Files: files, BeforeRev: headRev(repo), AfterRev: ":",
+		}, cov)
+		return nil
+	}
+
+	set, err := st.Load()
+	if err != nil {
+		return err
+	}
+	check.Signals(st, cfg, set, res, check.ChangeSet{
+		Repo: repo, Files: files, BeforeRev: headRev(repo), AfterRev: ":",
+	}, cov)
+	return nil
+}
+
+func headRev(repo *gitx.Repo) string {
+	if repo.HasHead() {
+		return "HEAD"
+	}
+	return ""
+}
+
+func coverageFromFiles(st *store.Store, set *store.Set, files []string, trailers []store.ID) check.Coverage {
+	return check.Coverage{Trailers: trailers, ChangedDecisionPaths: changedDecisionPaths(files)}
+}
+
+// changedDecisionPaths 找出本次变化里新增或修改的决策文件。
+func changedDecisionPaths(files []string) map[string]bool {
+	out := map[string]bool{}
+	prefix := store.DirName + "/decisions/"
+	for _, f := range files {
+		if strings.HasPrefix(f, prefix) && strings.HasSuffix(f, ".md") {
+			out[f] = true
+		}
+	}
+	return out
 }
