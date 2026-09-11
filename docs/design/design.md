@@ -176,6 +176,7 @@ keel why [--path p] [--query q] [--history]
 keel note "<一句话>" --tag db [--path f.go]
 keel check [--target worktree|index|commit-msg|range] [--json]
 keel archive <M-…> --reason "<原因>"                  记忆 → archived，与 retire 对称
+keel deinit [--purge] [--dry-run]                     从仓库退出：撤 hook、清产物；默认保留 .keel/
 keel brief [--task t] [--path p] [--budget N]
 keel review [--json]
 
@@ -334,6 +335,8 @@ templates/                go:embed：三个内置 skill、hook 脚本、CLAUDE.m
 | **M3 · 受控进化** | review 候选、技能/规则版本、任务对照评估、生效与撤回 | 学习后正确完成复发任务；无关任务不被新规则误伤；失败候选不生效 |
 | **M4 · 复用与扩展** | 固定来源版本的模板导入、更新差异与更多适配器 | 模板更新不覆盖本地演化；未支持能力被准确报告 |
 | **M5 · 索引收敛** | 现行/历史分层的索引、显式归档、归档候选与索引压力信号 | 对象上千后索引仍只列现行结论；归档不删历史；keel 不自行决定淘汰谁 |
+| **M6 · 易用性** | shell 补全、自更新 | 补全不依赖框架；更新校验 SHA256 后再替换二进制 |
+| **M7 · 优雅退出** | `keel deinit`：init 的逆操作，只撤 keel 自己写过的东西 | 退出后仓库没有任何 keel 痕迹，除了被显式保留的 `.keel/`；别人的 hook、块外内容一个字节不动；退出可重入、可逆 |
 
 brief/note 前置到 M1，因为记忆的写入与召回属于产品核心。自动扩大自决范围后置到 M3 且仍受项目策略上限约束。
 
@@ -596,6 +599,122 @@ M2 到 M4 已经把**状态**做完了：supersede / retire / archive 都有合�
 这是严格解析换来的代价，不改：静默忽略拼错的策略名比这危险得多。但它意味着两件事——
 **新字段进 minor 版本**，以及**仓库里写了新字段就要求协作者升级 keel**。
 反过来是安全的：新版读缺字段的旧 `keel.yaml`，由 `DefaultConfig()` 兜底。
+
+### M7 切片
+
+M7 = 优雅退出。一句话：**能进就得能退，退的时候只带走自己的东西。**
+
+一个工具能不能被放心装进仓库，取决于卸掉它有多干净。keel 往仓库里写的东西散在四处：
+`.git/hooks/`、`CLAUDE.md` 的标记块、`.claude/settings.json` 里的两条 hook、`.mcp.json` 的几个键、
+两份技能副本、`.keel/` 本身。手工退出要对着 `generated.yaml` 一处处找，漏一处就留下一个
+指向不存在的二进制的 hook。这不该是人的活。
+
+M1 已经把前提做好了：**所有权在 `generated.yaml` 里，不靠猜。** 每个产物记着 keel 拥有哪个范围、
+上次写成什么样；git hook 有 `# keel:begin/end` 标记，串联过的原脚本还在 `.keel-local`。
+所以退出不是一套新逻辑——它是 `sync` 的「源已删除」分支跑到极限，加上 hook 安装的逆操作。
+
+| M7 实现 | M7 不做 |
+|---|---|
+| `keel deinit`：按 `generated.yaml` 撤掉所有工具产物，按标记撤掉 git hook，清 `.keel/cache/` | 猜所有权：没记在 `generated.yaml` 里的文件一概不碰 |
+| 默认**保留** `.keel/`：决策、规则、记忆、证据、`knowledge/INDEX.md` 原样留下 | 默认删除决策历史 |
+| `--purge`：连 `.keel/` 一起删；要求 `.keel/` 在 git 里是干净的 | 删没提交过的记录 |
+| 标记块、JSON 条目、TOML 块：只去掉 keel 的那段，别的原样保留；去掉后什么都不剩才删文件 | 覆盖或删除任何被人改过的托管内容——报冲突，一个都不写 |
+| 串联过的 hook 把 `.keel-local` 原样换回去；keel 自己装的整文件删掉 | 动 husky / lefthook 等管理器的配置——只提示在哪删那一步 |
+| `--dry-run` 打印完整计划；有冲突时退出码 1 且不写入 | 交互确认。要看先 `--dry-run`，要做就直接做 |
+| 退出后 `keel init` 能原地接回来 | 改 `keel.yaml`。它是人写的策略，不是产物 |
+| 报告哪些地方需要人来接（管理器接管的 hook、CI 里的 `keel check`） | 改 CI 配置、改 git 历史、删 `Decision:` trailer |
+
+#### 退出就是反着来一遍 init
+
+`init` 的六步是：建 `.keel/` 骨架 → 导模板 → 写配置 → 复制内置技能 → 装 hook → `sync`。
+`deinit` 严格倒序，而且**先撤依赖 `.keel/` 的东西，最后才碰 `.keel/`**：
+
+1. **产物。** 用 `generated.yaml` 当唯一清单，把工具侧的产物集合当成空集跑一次规划——这正是
+   `BuildPlan` 里「源对象被删」那个分支：产物仍等于上次生成的就清掉，被改过的报冲突。
+   `.keel/` 内的产物（`knowledge/INDEX.md`、`CODEMAP.md`）不在这个集合里：它们本来就是
+   「clone 之后不装 keel 也能读」的那份，保留 `.keel/` 时它们一起留下，`generated.yaml` 也跟着
+   只剩这几条记录，这样 `init` 回来时 `sync` 认得出它们是自己的。
+2. **git hook。** 沿 `HooksDir()` 找（认 `core.hooksPath` 与 worktree），逐个看：含 `# keel:begin`
+   的是 keel 装的——旁边有 `.keel-local` 就把它改名换回去，没有就删；不含标记的是别人的，
+   不动，只报一句。hook 是仓库级的，主仓库和所有 worktree 共用一份，退出时提醒这一点。
+3. **`.keel/cache/`。** 一律清掉：Stop 去重键这类东西离开 keel 就没意义，而且它本来就在
+   `.gitignore` 里。
+4. **`.keel/` 本身。** 默认留下；`--purge` 才删。
+
+顺序是为了可重入：如果上一次跑到一半断了（比如产物删了、hook 还在），再跑一次照样从
+`generated.yaml` 出发，找不到要清的产物就直接往下走。`.keel/` 排最后，因为清单在它里面——
+先删清单再找产物就没得找了。跑两次的结果和跑一次相同，第二次输出「无变化」，和 `sync` 一样。
+
+#### 「去掉 keel 的那段」在每种文件里各是什么
+
+`sync` 有五种所有权模式，退出得每种都能逆着做。M1 的 `removeOwned` 只会两种（整文件、标记块），
+JSON 那两种走到就报「不知道怎么清理」。M7 把它补齐，规则只有一条：
+**去掉 keel 拥有的范围，剩下什么留什么；一个字节都不剩才删文件。**
+
+| 模式 | 拥有范围 | 去掉之后 |
+|---|---|---|
+| 整文件（技能副本、`.claude/rules/keel.md`） | `*` | 删文件；沿路向上删空目录，止于仓库根或非空目录 |
+| 标记块（`CLAUDE.md` / `AGENTS.md`） | `keel:begin..keel:end` | 去掉块与紧邻空行；块外内容原样；剩空文件就删 |
+| TOML 块（`.codex/config.toml`） | 同上 | 同上 |
+| JSON hook 条目（`.claude/settings.json` / `.codex/hooks.json`） | `owned_json` 里记的条目 | 只删内容完全相同的那几条；事件数组空了删键，`hooks` 空了删键，根对象空了删文件 |
+| JSON 对象键（`.mcp.json` 的 `mcpServers.*`） | `owned_json` 里记的键 | 只删值仍与记录相同的键；同样逐层收空 |
+
+「值仍与记录相同」是硬条件。人在 `.mcp.json` 里给 keel 写的那个 server 加了一个字段，
+这个键就已经不完全是 keel 的了——报冲突，让人决定，而不是把人加的字段一起带走。
+这跟 `sync` 遇到同一情况的处理完全一致：`sync` 不覆盖，`deinit` 就不删除。
+
+#### 为什么默认不删 `.keel/`
+
+`.keel/` 里是这个仓库的决策、规则、记忆和证据——它们是**项目的**记录，不是 keel 的产物。
+keel 只是记录它们的工具。停用工具和销毁记录是两件事，默认把它们绑在一起，等于让「我不想再
+跑 pre-commit 检查了」顺带变成「把三年的架构决策删掉」。§8.1 那条「不删除失败历史」
+在退出时同样成立。
+
+而且 `.keel/` 离开 keel 也能读：全部是 markdown + frontmatter，`knowledge/INDEX.md` 是
+现成的目录。一个不装 keel 的协作者 clone 下来仍然能看「为什么选 SQLite」。这是 M2 把索引
+做成仓库内文件的原因，退出时正好兑现。
+
+所以删 `.keel/` 是一个独立的、要显式说的动作：`--purge`。它多一道检查——`.keel/` 在 git 里
+必须干净（`git status --porcelain -- .keel/` 为空）。有没提交的决策就拒绝，理由直说：
+提交了的删了还能从历史里捞，没提交的删了就真没了。这道检查没有跳过开关；要绕开，
+先提交，或者自己 `rm -rf .keel`，两者都是人明确做的事。
+
+#### 什么算「退干净了」
+
+验收用一个夹具说清楚：在一个干净仓库里 `init` → 写几条决策 → 提交 → `deinit --purge`，
+之后 `git status` 只剩产物文件的删除与标记块的收缩，`git diff` 里没有任何一行是 keel
+**没写过**的；`.git/hooks/` 回到 `init` 之前的样子；`grep -r keel` 在工作树里只命中
+历史提交的 `Decision:` trailer——那是 git 对象，不是工作树，本来就不该动。
+
+再加三个边界夹具：串联过的 hook 退出后原脚本一字不差回到原位；托管块被人改过时
+退出码 1 且**没有任何文件被写**（和 `sync` 的冲突语义一致）；`deinit` 之后 `init`
+能接回来且 `sync --dry-run` 报「无变化」。
+
+#### 不做的理由
+
+- **不做交互确认。** keel 的每个命令都是「先规划、再写入」，`--dry-run` 就是确认。
+  加一个 y/N 只会让脚本里多一个 `--yes`。
+- **不动 `keel.yaml`。** 它是人写的策略。退出后它留在 `.keel/` 里，`init` 接回来时
+  `tools` 和 `mcp` 都还在，不用重配。代价是退出后手动 `keel sync` 会把产物重新生成——
+  这是人显式做的事，不算意外。
+- **不碰管理器接管的 hook。** husky 的 `.husky/pre-commit` 里那行 `keel check` 是人按
+  `init` 的提示手写进去的，退出时同样由人删。keel 只负责把这件事说出来，位置和命令都给出。
+- **不叫 `uninstall`。** 那个词在 CLI 里通常指卸二进制，而二进制归 `keel update`
+  和包管理器管。`deinit` 对 `init`，含义和 `git submodule deinit` 一样：从这个仓库注销，
+  数据默认保留。
+
+**M7 实现状态（2026-09-11）：** 上表全部实现并有测试（`deinit-keeps-keel` / `deinit-purge` /
+`deinit-restores-chained-hook` / `deinit-conflict-writes-nothing`）。写这份切片时没想到的三处：
+
+- **标记块的拼接有个老 bug。** M1 的 `removeOwned` 把块前内容 `TrimRight` 掉换行、块后内容
+  `TrimLeft` 掉换行后直接相连，块前最后一行和块后第一行会粘成一行。M1 里它只在「源被删」
+  这条少走的路上触发，M7 让它成了主路，顺手修掉：两侧都有内容时中间留一个空行。
+- **JSON 里「人删掉了 keel 的键」两种模式口径不同，照抄 `sync`。** hook 条目：少了一条就是冲突
+  （`sync` 也这么判）。对象键：人删掉的当作不再需要，不算冲突（`sync` 同样如此）。退出时
+  各自沿用，不另起一套判断。
+- **hook 有第三种去向：trim。** 设计只写了「删」和「换回」，但有人会在 keel 段外面加几行。
+  那就只去掉 keel 段，其余保留——和标记块一个规则。真正无法自动处理的只有一种：
+  keel 段外有手写内容**且** `.keel-local` 也在，两份都想活，keel 不替人合并，报出来。
 
 ## 13. 已关闭的待定项
 

@@ -230,3 +230,159 @@ func writeExecutable(path, content string) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// HookRemoval 描述退出（keel deinit）时对一个 hook 的处理计划。
+//
+// 和安装一样先规划再动手：含 keel 标记的才是 keel 的；去掉 keel 段之后什么都不剩
+// 就删（串联过的把 .keel-local 换回去），还剩东西就只去掉 keel 段。
+// 不含标记的是别人的，一个字节不动。
+type HookRemoval struct {
+	Name    HookName
+	Path    string
+	Action  string // restore | delete | trim | keep | none
+	Detail  string
+	Blocked bool // 需要人来接，不能自动处理
+
+	trimmed string // Action == trim 时要写回的内容
+}
+
+// PlanRemoveHooks 检查每个 hook 退出时该怎么处理，不写任何文件。
+func (r *Repo) PlanRemoveHooks() ([]HookRemoval, error) {
+	dir, err := r.HooksDir()
+	if err != nil {
+		return nil, err
+	}
+	var plans []HookRemoval
+	for _, h := range []HookName{PreCommit, CommitMsg} {
+		p := HookRemoval{Name: h, Path: filepath.Join(dir, string(h))}
+		local := p.Path + ".keel-local"
+		_, lerr := os.Stat(local)
+		hasLocal := lerr == nil
+
+		data, err := os.ReadFile(p.Path)
+		switch {
+		case os.IsNotExist(err):
+			p.Action = "none"
+		case err != nil:
+			return nil, err
+		case !strings.Contains(string(data), hookBegin):
+			p.Action = "keep"
+			if m := detectManager(string(data)); m != "" {
+				p.Detail = fmt.Sprintf("由 %s 管理；它的配置里若有 `keel check` 那一步，请自己删", m)
+			} else {
+				p.Detail = "不是 keel 装的，没动"
+			}
+		default:
+			rest, serr := stripHookBlock(string(data))
+			switch {
+			case serr != nil:
+				p.Action, p.Blocked, p.Detail = "keep", true, serr.Error()
+			case hookRemainderEmpty(rest) && hasLocal:
+				p.Action, p.Detail = "restore", "原脚本从 "+filepath.Base(local)+" 换回"
+			case hookRemainderEmpty(rest):
+				p.Action = "delete"
+			case hasLocal:
+				p.Action, p.Blocked = "keep", true
+				p.Detail = "keel 段之外有手写内容，而 " + filepath.Base(local) + " 也还在；请手工合并后再退出"
+			default:
+				p.Action, p.Detail, p.trimmed = "trim", "去掉 keel 段，其余内容保留", rest
+			}
+		}
+		plans = append(plans, p)
+	}
+	sort.Slice(plans, func(i, j int) bool { return plans[i].Name < plans[j].Name })
+	return plans, nil
+}
+
+// RemoveHooks 按计划执行。有 Blocked 的计划时什么都不做，直接报错。
+func (r *Repo) RemoveHooks(plans []HookRemoval) error {
+	for _, p := range plans {
+		if p.Blocked {
+			return fmt.Errorf("hook %s 需要人来接：%s", p.Name, p.Detail)
+		}
+	}
+	for _, p := range plans {
+		switch p.Action {
+		case "delete":
+			if err := os.Remove(p.Path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		case "restore":
+			if err := os.Remove(p.Path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if err := os.Rename(p.Path+".keel-local", p.Path); err != nil {
+				return err
+			}
+		case "trim":
+			if err := writeExecutable(p.Path, p.trimmed); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// stripHookBlock 去掉 keel 段（含标记），两侧内容接回。只找到半个标记就报错。
+func stripHookBlock(content string) (string, error) {
+	i := strings.Index(content, hookBegin)
+	j := strings.Index(content, hookEnd)
+	switch {
+	case i < 0 || j < 0:
+		return "", fmt.Errorf("只找到半个 keel 标记（begin=%v end=%v），请手工清理", i >= 0, j >= 0)
+	case j < i:
+		return "", fmt.Errorf("keel 标记顺序颠倒，请手工清理")
+	}
+	before := strings.TrimRight(content[:i], "\n")
+	after := strings.TrimLeft(content[j+len(hookEnd):], "\n")
+	out := before
+	if before != "" && after != "" {
+		out += "\n\n" + after
+	} else {
+		out += after
+	}
+	if out != "" && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out, nil
+}
+
+// hookRemainderEmpty 报告去掉 keel 段之后是否只剩 shebang 和空白。
+func hookRemainderEmpty(rest string) bool {
+	lines := strings.SplitN(rest, "\n", 2)
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
+		rest = ""
+		if len(lines) == 2 {
+			rest = lines[1]
+		}
+	}
+	return strings.TrimSpace(rest) == ""
+}
+
+// WorktreeCount 返回这个仓库有几个工作树（含主仓库）。hook 是仓库级的，退出时要提醒。
+func (r *Repo) WorktreeCount() int {
+	out, err := r.git("worktree", "list", "--porcelain")
+	if err != nil {
+		return 1
+	}
+	n := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			n++
+		}
+	}
+	if n == 0 {
+		return 1
+	}
+	return n
+}
+
+// StatusPorcelain 返回某个路径下 git status --porcelain 的输出（含未跟踪文件）。
+// 空串表示这条路径在 git 里是干净的。
+func (r *Repo) StatusPorcelain(path string) (string, error) {
+	out, err := r.git("status", "--porcelain", "--untracked-files=all", "--", path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}

@@ -127,6 +127,38 @@ JSON 里它写过的那几条 hook 条目和 MCP 键。块外的内容、你自�
 下一轮普通 `sync` 会把它删掉**（源没了就清理，和别的产物同一个规则）。
 要长期留着，在 `keel.yaml` 里写 `knowledge.codemap: true`。
 
+### `keel deinit`
+
+```
+keel deinit [--purge] [--dry-run]
+```
+
+`init` 的逆操作：撤掉 git hook、清掉工具侧产物，**默认保留 `.keel/`**。
+只带走 keel 自己写过的东西——所有权以 `generated.yaml` 和 hook 里的 `# keel:begin` 标记为准，不猜。
+
+顺序是 `init` 的倒序，而且先撤依赖 `.keel/` 的部分，最后才碰 `.keel/`：
+
+1. 产物：技能副本、`.claude/rules/keel.md` 这类整文件直接删；`CLAUDE.md` / `AGENTS.md` /
+   `.codex/config.toml` 只去掉标记块；`.claude/settings.json` / `.codex/hooks.json` / `.mcp.json`
+   只撤 keel 写过的那几条。块外内容、你自己的 hook 条目、别的字段一律原样。
+   去掉 keel 的部分后什么都不剩才删文件，删完顺手收走空目录。
+2. git hook：含 keel 标记的才动。`--adopt-hooks` 串联过的把原脚本从 `.keel-local` 换回去；
+   不含标记的是别人的，不碰，只报一句。hook 是仓库级的，别的工作树也一并没有提交检查了。
+3. `.keel/cache/` 清掉。
+4. `.keel/`：留下。决策、规则、记忆、证据和 `knowledge/INDEX.md` 都是 markdown，不装 keel 也能读。
+
+托管内容被手工改过时报冲突，**一个文件都不写**，退出码 1——和 `sync` 同一条规则：
+`sync` 不覆盖的，`deinit` 就不删。`--dry-run` 只打印计划。
+
+`--purge` 连 `.keel/` 一起删。它要求 `.keel/` 在 git 里是干净的：提交过的删了还能从历史里捞，
+没提交的删了就真没了，所以有未提交改动时直接拒绝，没有跳过开关。
+
+退出后 `keel init` 能原地接回来：`keel.yaml` 没动过，`tools` 和 `mcp` 都还在。
+反过来说，退出后手动 `keel sync` 会把产物重新生成——那是你显式做的事。
+
+keel 不会替你改的：husky / lefthook 配置里手写的 `keel check` 那一步、CI 里的 `keel check`
+（会列出哪些文件还提到 keel）、git 历史里的 `Decision:` trailer。
+
 ### `keel template`
 
 跨仓库复用一套 keel 配置：模板仓库自己就是个 keel 仓库，你导入它 `.keel/` 的可复用部分。

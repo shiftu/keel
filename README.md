@@ -26,6 +26,7 @@ keel review                                  到期、失效、学习候选
 keel check --target index                    验证真正要提交的内容
 keel completion --install                    装 shell 补全（自己认当前 shell）
 keel update                                  换成 GitHub 上的新版（校验和必对）
+keel deinit [--purge]                        从仓库退出：撤 hook、清产物；默认保留 .keel/
 ```
 
 ## 安装
@@ -103,6 +104,10 @@ M0（协议）、M1（统一底座）、M2（可信记忆）、M3（受控进化
   `keel archive` 是记忆退场的显式入口；`keel review` 给归档候选和索引压力信号。
   淘汰不是删除，keel 也不替人决定淘汰谁——时间不是证据。
   导入的规则一律落成 candidate——模板给的是建议，要生效仍得在本地 `keel decide` 记依据、`keel promote` 跑对照验证。
+
+- M7：`keel deinit` 是 `init` 的逆操作，只带走 keel 自己写过的东西——所有权以 `generated.yaml`
+  和 hook 标记为准。默认保留 `.keel/`（决策历史是项目的，不是工具的），`--purge` 才删且要求
+  它在 git 里干净。托管内容被改过就报冲突、一个文件都不写，和 `sync` 同一条规则。
 
 更多适配器（claude / codex 之外）未做。技能的对照评估继续后置：它要求宿主在固定任务集上执行任务，
 在那套基础设施存在之前做，只会给出没有验证支撑的可信度；M4 只把技能的**版本**定义成模板钉住的那个 commit。

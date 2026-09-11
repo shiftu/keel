@@ -693,6 +693,10 @@ keel template update [--to <ref>] [--dry-run] [--json]
 
 所有权以 `generated.yaml` 为准，不以 `command` 前缀猜测用户手写调用。
 
+`keel deinit` 也只认这份清单：工具侧的记录逐条撤掉（整文件删、标记块去掉、JSON 条目按 `owned_json` 认领后删），
+`.keel/` 内的记录（`knowledge/INDEX.md`、`CODEMAP.md`）随 `.keel/` 一起留下，退出后 `generated.yaml` 就只剩它们，
+`adapter_schema` 清空。这样 `keel init` 接回来时 `sync` 认得出索引是自己的，不会报「已存在同名的非托管文件」。
+
 ### 9.3 `.codex/hooks.json`
 
 调用 `keel hook codex session-start` / `keel hook codex stop`。具体 schema 以探测到的 Codex 版本为准。

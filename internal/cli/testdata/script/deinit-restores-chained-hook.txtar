@@ -1,0 +1,36 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+cp my-pre-commit .git/hooks/pre-commit
+exec chmod +x .git/hooks/pre-commit
+
+# 串联安装：原脚本挪到 .keel-local。
+exec keel init --tools claude --adopt-hooks
+exists .git/hooks/pre-commit.keel-local
+grep 'keel:begin' .git/hooks/pre-commit
+
+# init 之后有人换掉了 commit-msg：那就不是 keel 的了。
+cp my-commit-msg .git/hooks/commit-msg
+exec chmod +x .git/hooks/commit-msg
+
+exec keel deinit
+stdout 'hook commit-msg +keep.*不是 keel 装的'
+stdout 'hook pre-commit +restore'
+
+# 原脚本一字不差回到原位，.keel-local 没了。
+cmp .git/hooks/pre-commit my-pre-commit
+! exists .git/hooks/pre-commit.keel-local
+exec sh -c 'test -x .git/hooks/pre-commit'
+
+# 别人的 commit-msg 一个字节没动。
+cmp .git/hooks/commit-msg my-commit-msg
+
+-- my-pre-commit --
+#!/bin/sh
+# 我自己的 pre-commit
+echo "mine"
+-- my-commit-msg --
+#!/bin/sh
+# 后来换上的 commit-msg
+exit 0

@@ -138,7 +138,7 @@ func BuildPlan(root string, prev Generated, arts []Artifact, adapterSchema map[s
 		if !existed {
 			continue
 		}
-		cleaned, ownedNow, err := removeOwned(rec.Owned, current)
+		cleaned, ownedNow, err := removeOwned(rec, current)
 		if err != nil {
 			p.Conflicts = append(p.Conflicts, Conflict{Path: rec.Path, Reason: err.Error(),
 				Fix: "手工清理后再 sync"})
@@ -237,24 +237,50 @@ func renderOne(a Artifact, current string, existed bool, rec GenFile, hasRec boo
 	return "", "", nil, fmt.Errorf("未知渲染模式 %q", a.Mode)
 }
 
-// removeOwned 在源被删除时，从文件里去掉 keel 拥有的部分。
-func removeOwned(owned, current string) (cleaned, ownedNow string, err error) {
-	switch owned {
-	case "*":
+// removeOwned 在源被删除（或 keel 整个退出）时，从文件里去掉 keel 拥有的部分。
+//
+// 规则只有一条：去掉 keel 拥有的范围，剩下什么留什么；一个字节都不剩才删文件
+// （cleaned 为空时由调用方删）。ownedNow 是现在文件里实际属于 keel 的那部分，
+// 调用方拿它和上次生成的摘要比——对不上说明被人改过，报冲突而不是删。
+func removeOwned(rec GenFile, current string) (cleaned, ownedNow string, err error) {
+	switch {
+	case rec.Owned == "*":
 		return "", current, nil
-	case "keel:begin..keel:end":
+	case rec.Owned == "keel:begin..keel:end":
 		for _, pair := range [][2]string{{MarkdownBegin, MarkdownEnd}, {TOMLBegin, TOMLEnd}} {
 			b, ferr := findBlock(current, pair[0], pair[1])
 			if ferr != nil {
 				return "", "", ferr
 			}
 			if b.found {
-				return strings.TrimRight(b.before, "\n") + strings.TrimLeft(b.after, "\n"), b.inner, nil
+				return joinAroundBlock(b.before, b.after), b.inner, nil
 			}
 		}
 		return current, "", nil
+	case rec.Owned == "hooks" && rec.OwnedJSON != "":
+		return removeOwnedHookEntries(rec, current)
+	case rec.OwnedJSON != "":
+		return removeOwnedObjectKeys(rec, current)
 	}
-	return current, "", fmt.Errorf("不知道怎么清理 %q 范围", owned)
+	return current, "", fmt.Errorf("不知道怎么清理 %q 范围", rec.Owned)
+}
+
+// joinAroundBlock 把标记块两侧的内容接回去：去掉块和紧邻的空行，两侧都有内容时
+// 中间留一个空行。直接拼接会把块前最后一行和块后第一行粘成一行。
+func joinAroundBlock(before, after string) string {
+	before = strings.TrimRight(before, "\n")
+	after = strings.TrimLeft(after, "\n")
+	out := before
+	switch {
+	case before != "" && after != "":
+		out += "\n\n" + after
+	default:
+		out += after
+	}
+	if out != "" && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out
 }
 
 func readFile(path string) (string, bool, error) {
@@ -280,6 +306,7 @@ func Apply(root string, p *Plan) error {
 			if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
 				return err
 			}
+			pruneEmptyDirs(root, filepath.Dir(full))
 		case OpCreate, OpUpdate:
 			if err := store.WriteFileAtomic(full, op.Data, 0o644); err != nil {
 				return err
@@ -287,4 +314,24 @@ func Apply(root string, p *Plan) error {
 		}
 	}
 	return nil
+}
+
+// pruneEmptyDirs 删掉产物走后留下的空目录，一路向上，止于仓库根或非空目录。
+// 只会删空目录，所以不需要知道哪些目录是 keel 建的：有别人的东西就停。
+func pruneEmptyDirs(root, dir string) {
+	root = filepath.Clean(root)
+	for {
+		dir = filepath.Clean(dir)
+		if dir == root || !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := os.Remove(dir); err != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
 }

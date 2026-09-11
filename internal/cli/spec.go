@@ -91,6 +91,10 @@ func specs() []cmdSpec {
 			{Name: "dry-run", Desc: "只打印计划与冲突，不写入"},
 			{Name: "codemap", Desc: "这一轮同时生成目录概览"},
 		}},
+		{Name: "deinit", Summary: "从仓库退出：撤 hook、清产物；默认保留 .keel/", Flags: []flagSpec{
+			{Name: "purge", Desc: "连 .keel/ 一起删（要求它在 git 里是干净的）"},
+			{Name: "dry-run", Desc: "只打印计划与冲突，不写入"},
+		}},
 		{Name: "decide", Summary: "记录一次架构决策", Arg: dynNothing, Flags: []flagSpec{
 			{Name: "tag", Arg: "LIST", Desc: "标签，可重复或逗号分隔", List: true},
 			{Name: "scope", Arg: "GLOB", Desc: "管辖路径 glob，可重复或逗号分隔", Dyn: dynPath, List: true},

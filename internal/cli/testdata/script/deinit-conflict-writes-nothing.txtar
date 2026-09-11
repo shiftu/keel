@@ -1,0 +1,44 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# 1. 托管块被手改 → 退出码 1，一个文件都不写。
+exec sh -c 'sed -i.bak "s/本仓库用 keel/【我手改了这一行】本仓库用 keel/" CLAUDE.md && rm -f CLAUDE.md.bak'
+exec keelrc deinit
+stdout 'keel-exit=1'
+stderr '没有写入任何文件'
+stderr 'CLAUDE\.md'
+exists .claude/skills/keel-decide/SKILL.md
+exists .git/hooks/pre-commit
+grep 'keel hook claude stop' .claude/settings.json
+grep 'path: CLAUDE\.md' .keel/generated.yaml
+grep '我手改了这一行' CLAUDE.md
+
+# 还原之后再试：JSON 里 keel 写过的条目被改 → 同样拒绝。
+exec sh -c 'sed -i.bak "s/【我手改了这一行】//" CLAUDE.md && rm -f CLAUDE.md.bak'
+cp .claude/settings.json settings-clean.json
+cp settings-tampered.json .claude/settings.json
+exec keelrc deinit
+stdout 'keel-exit=1'
+stderr '\.claude/settings\.json'
+exists .claude/skills/keel-decide/SKILL.md
+grep 'keel:begin' CLAUDE.md
+
+# 还原成生成内容后正常退出。
+cp settings-clean.json .claude/settings.json
+exec keel deinit
+! exists .claude
+
+-- settings-tampered.json --
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "command": "keel hook claude session-start --evil", "type": "command" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "command": "keel hook claude stop", "type": "command" } ] }
+    ]
+  }
+}

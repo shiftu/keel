@@ -1,0 +1,46 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+cp mine.md README.md
+exec git add -A
+exec git commit -qm 'chore: readme'
+exec keel init --tools claude,codex
+exec keel decide '用 SQLite' --tag db --scope 'internal/store/**'
+
+# .keel/ 有没提交的东西：--purge 拒绝，什么都不动。
+exec keelrc deinit --purge
+stdout 'keel-exit=1'
+stderr '没提交的改动'
+exists .keel/keel.yaml
+exists .claude/skills/keel-decide/SKILL.md
+exists .git/hooks/pre-commit
+
+# 提交之后就能删：提交过的内容仍在历史里。
+exec git add -A
+exec git commit -qm 'chore: keel init'
+exec keel deinit --purge
+stdout 'purge +\.keel/'
+! exists .keel
+! exists CLAUDE.md
+! exists AGENTS.md
+! exists .claude
+! exists .agents
+! exists .codex
+! exists .git/hooks/pre-commit
+! exists .git/hooks/commit-msg
+
+# 退干净了：工作树里只剩 keel 写过的文件的删除，没有一行是它没写过的。
+exec git status --porcelain
+! stdout '^.[^D]'
+! stdout '^\?\?'
+! stdout 'README\.md'
+cmp README.md mine.md
+
+# 决策还能从历史里捞出来。
+exec git show HEAD:.keel/keel.yaml
+
+-- mine.md --
+# 我的项目
+
+这是我自己的 README，keel 不该碰。

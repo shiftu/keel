@@ -1,0 +1,82 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude,codex
+exec keel decide '用 SQLite' --tag db --scope 'internal/store/**'
+exists .claude/skills/keel-decide/SKILL.md
+exists .agents/skills/keel-decide/SKILL.md
+exists .git/hooks/pre-commit
+exists .git/hooks/commit-msg
+
+# 块外的内容和用户自己的 hook 条目，退出后必须原样还在。
+exec sh -c 'printf "\n# 我自己的说明\n这一段不归 keel 管。\n" >> CLAUDE.md'
+cp settings-with-user-hook.json .claude/settings.json
+exec keel sync
+
+# --dry-run 只打印计划，什么都不动。
+exec keel deinit --dry-run
+stdout 'delete +\.claude/skills/keel-decide/SKILL\.md'
+stdout 'update +CLAUDE\.md'
+stdout 'hook pre-commit +delete'
+exists .claude/skills/keel-decide/SKILL.md
+exists .git/hooks/pre-commit
+
+exec keel deinit
+stdout '保留了 \.keel/'
+
+# 工具侧产物：整文件删掉，空目录一并收走。
+! exists .claude/skills
+! exists .agents
+! exists .claude/rules
+! exists AGENTS.md
+! exists .git/hooks/pre-commit
+! exists .git/hooks/commit-msg
+
+# 标记块去掉，块外内容留下。
+! grep 'keel:begin' CLAUDE.md
+grep '我自己的说明' CLAUDE.md
+
+# JSON：只撤 keel 那几条，别人的 hook 和无关字段留下。
+grep 'my-own-tool' .claude/settings.json
+grep 'permissions' .claude/settings.json
+! grep 'keel hook' .claude/settings.json
+
+# .keel/ 原样：决策、配置、索引都在；cache 清了；清单只剩仓库内产物。
+exists .keel/keel.yaml
+exists .keel/intent.md
+exists .keel/knowledge/INDEX.md
+! exists .keel/cache
+exec sh -c 'ls .keel/decisions | grep -c "^D-" | grep -q 1'
+grep 'path: \.keel/knowledge/INDEX\.md' .keel/generated.yaml
+! grep 'CLAUDE\.md' .keel/generated.yaml
+
+# 幂等：再跑一次没变化。
+exec keel deinit
+stdout '无变化'
+
+# 能原地接回来：keel.yaml 没动过，tools 还在，init 不用再给 --tools；sync 认得出索引是自己的。
+exec keel init
+exists .claude/skills/keel-decide/SKILL.md
+exists .git/hooks/pre-commit
+grep 'keel:begin' CLAUDE.md
+grep '我自己的说明' CLAUDE.md
+exec keel sync --dry-run
+stdout '无变化'
+exec sh -c 'ls .keel/decisions | grep -c "^D-" | grep -q 1'
+
+-- settings-with-user-hook.json --
+{
+  "permissions": {
+    "allow": ["Bash(ls:*)"]
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "my-own-tool" } ] },
+      { "hooks": [ { "command": "keel hook claude session-start", "type": "command" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "command": "keel hook claude stop", "type": "command" } ] }
+    ]
+  }
+}

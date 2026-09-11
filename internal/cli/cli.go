@@ -38,6 +38,7 @@ func commands() []command {
 	return []command{
 		{"init", "建 .keel/，探测工具，安装 git hooks，然后 sync", cmdInit, false},
 		{"sync", ".keel/ → 工具原生文件；先规划再写入", cmdSync, false},
+		{"deinit", "从仓库退出：撤 hook、清产物；默认保留 .keel/", cmdDeinit, false},
 		{"decide", "记录一次架构决策", cmdDecide, false},
 		{"why", "查某路径或主题下的决策、规则、记忆", cmdWhy, false},
 		{"note", "记一条候选记忆", cmdNote, false},

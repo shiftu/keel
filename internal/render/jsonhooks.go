@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // renderHookEntries 把 keel 的 hook 条目合并进 .claude/settings.json 这类文件。
@@ -221,4 +222,152 @@ func renderJSONObjectKeys(a Artifact, current string, existed bool, rec GenFile,
 		return "", "", &Conflict{Path: a.Path, Reason: err.Error()}
 	}
 	return string(out) + "\n", string(ownedBytes), nil
+}
+
+// removeOwnedHookEntries 从 hooks 数组里撤掉 keel 写过的那几条。
+// 认领仍靠 owned_json 的内容比对：只删内容完全相同的条目，别人的一律保留。
+// 事件数组空了删键，hooks 空了删键，根对象空了返回空串让调用方删文件。
+func removeOwnedHookEntries(rec GenFile, current string) (cleaned, ownedNow string, err error) {
+	root, err := parseJSONObject(current)
+	if err != nil {
+		return "", "", err
+	}
+	ours := map[string][]string{}
+	if err := json.Unmarshal([]byte(rec.OwnedJSON), &ours); err != nil {
+		return "", "", fmt.Errorf("generated.yaml 里的 owned_json 坏了: %w", err)
+	}
+	hooks, _ := root["hooks"].(map[string]any)
+
+	found := map[string][]string{}
+	for event, wantList := range ours {
+		want := map[string]bool{}
+		for _, s := range wantList {
+			want[s] = true
+		}
+		list, _ := hooks[event].([]any)
+		var foreign []any
+		for _, item := range list {
+			canon, cerr := canonical(item)
+			if cerr != nil {
+				return "", "", cerr
+			}
+			if want[canon] {
+				found[event] = append(found[event], canon)
+				continue
+			}
+			foreign = append(foreign, item)
+		}
+		if len(foreign) == 0 {
+			delete(hooks, event)
+		} else {
+			hooks[event] = foreign
+		}
+	}
+	if len(hooks) == 0 {
+		delete(root, "hooks")
+	} else {
+		root["hooks"] = hooks
+	}
+
+	ownedNow = rec.OwnedJSON
+	if !sameEntrySets(ours, found) {
+		b, _ := json.Marshal(found)
+		ownedNow = string(b)
+	}
+	cleaned, err = marshalJSONObject(root)
+	return cleaned, ownedNow, err
+}
+
+// removeOwnedObjectKeys 从某个对象（如 mcpServers）下撤掉 keel 写过的键。
+// 值和记录不一样的键已经不完全是 keel 的了——留下并让摘要对不上，由调用方报冲突。
+// 人已经删掉的键当作不再需要，不算冲突，和 sync 的口径一致。
+func removeOwnedObjectKeys(rec GenFile, current string) (cleaned, ownedNow string, err error) {
+	root, err := parseJSONObject(current)
+	if err != nil {
+		return "", "", err
+	}
+	ours := map[string]string{}
+	if err := json.Unmarshal([]byte(rec.OwnedJSON), &ours); err != nil {
+		return "", "", fmt.Errorf("generated.yaml 里的 owned_json 坏了: %w", err)
+	}
+	container, _ := root[rec.Owned].(map[string]any)
+
+	found := map[string]string{}
+	for name, want := range ours {
+		cur, ok := container[name]
+		if !ok {
+			found[name] = want
+			continue
+		}
+		canon, cerr := canonical(cur)
+		if cerr != nil {
+			return "", "", cerr
+		}
+		found[name] = canon
+		if canon == want {
+			delete(container, name)
+		}
+	}
+	if len(container) == 0 {
+		delete(root, rec.Owned)
+	} else {
+		root[rec.Owned] = container
+	}
+
+	ownedNow = rec.OwnedJSON
+	for name, want := range ours {
+		if found[name] != want {
+			b, _ := json.Marshal(found)
+			ownedNow = string(b)
+			break
+		}
+	}
+	cleaned, err = marshalJSONObject(root)
+	return cleaned, ownedNow, err
+}
+
+func parseJSONObject(current string) (map[string]any, error) {
+	root := map[string]any{}
+	if strings.TrimSpace(current) == "" {
+		return root, nil
+	}
+	if err := json.Unmarshal([]byte(current), &root); err != nil {
+		return nil, fmt.Errorf("JSON 解析失败: %w", err)
+	}
+	return root, nil
+}
+
+// marshalJSONObject 序列化；根对象空了返回空串，表示这个文件已经没有别人的内容。
+func marshalJSONObject(root map[string]any) (string, error) {
+	if len(root) == 0 {
+		return "", nil
+	}
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(out) + "\n", nil
+}
+
+// sameEntrySets 比较两组 hook 条目是否完全一致（顺序无关）。
+func sameEntrySets(a, b map[string][]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for event, la := range a {
+		lb := b[event]
+		if len(la) != len(lb) {
+			return false
+		}
+		sa := append([]string{}, la...)
+		sb := append([]string{}, lb...)
+		sort.Strings(sa)
+		sort.Strings(sb)
+		for i := range sa {
+			if sa[i] != sb[i] {
+				return false
+			}
+		}
+	}
+	return true
 }
