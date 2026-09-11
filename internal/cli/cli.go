@@ -44,6 +44,7 @@ func commands() []command {
 		{"verify", "跑一次验证器，把结果记成证据", cmdVerify},
 		{"promote", "规则对照验证：candidate → active", cmdPromote},
 		{"retire", "撤回一条规则，保留原因与历史", cmdRetire},
+		{"archive", "归档一条记忆，保留原因与历史", cmdArchive},
 		{"task", "任务接续摘要：set / show / clear", cmdTask},
 		{"template", "模板来源：status / update", cmdTemplate},
 		{"brief", "输出任务相关的上下文包", cmdBrief},

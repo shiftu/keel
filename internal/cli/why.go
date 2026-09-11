@@ -55,7 +55,7 @@ func cmdWhy(e *env, args []string) error {
 
 	var hits []whyHit
 	for _, d := range set.Decisions {
-		hist := !d.Status.IsActive()
+		hist := d.Status.IsHistory()
 		if hist && !*history {
 			continue
 		}
@@ -67,7 +67,7 @@ func cmdWhy(e *env, args []string) error {
 			d.SourcePath(), why, hist})
 	}
 	for _, r := range set.Rules {
-		hist := r.Status == store.RuleRetired
+		hist := r.Status.IsHistory()
 		if hist && !*history {
 			continue
 		}
@@ -79,7 +79,7 @@ func cmdWhy(e *env, args []string) error {
 			r.SourcePath(), why, hist})
 	}
 	for _, m := range set.Memories {
-		hist := m.Status == store.MemArchived
+		hist := m.Status.IsHistory()
 		if hist && !*history {
 			continue
 		}

@@ -1,0 +1,98 @@
+[!exec:git] skip '需要 git'
+[!exec:grep] skip '夹具用 grep 当验证器'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# 过期 + 一条证据都没有 → 归档候选。keel 给候选和依据，不自己动手。
+exec keel review
+stdout 'memory_archive_candidate'
+stdout '复查日期 2020-01-01 已过，且从来没有过证据'
+stdout 'keel archive M-11111111'
+
+# 过期但有证据的那条走另一条路：重新 verify，不是归档。
+# 两者出路不同，不能合成一条。
+exec keel verify M-22222222 -- grep -q hello src/a.txt
+exec keel review
+stdout 'memory_review_due'
+! stdout 'keel archive M-22222222'
+
+# 归档之后候选消失，对象仍在仓库里。
+exec keel archive M-11111111 --reason '这条一直没人验证过，先撤下'
+exec keel review
+! stdout 'memory_archive_candidate'
+exec sh -c 'ls .keel/memory | wc -l'
+stdout '3'
+
+# 软上限是信号不是门禁：只在 review 里出现，check 不管。
+exec sh -c 'sed -f low.sed .keel/keel.yaml > k.tmp && mv k.tmp .keel/keel.yaml'
+exec keel review
+stdout '索引：现行 2 · 历史 1'
+stdout 'index_pressure'
+stdout '现行对象 2 条，超过 knowledge.index_soft_limit（1）'
+stdout '历史 1 条不计在内'
+exec keel check --target worktree
+! stdout 'index_pressure'
+
+-- low.sed --
+s/index_soft_limit: 200/index_soft_limit: 1/
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 缓存目录必须在本地盘
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2020-01-01
+by: agent:claude
+date: 2019-01-01
+---
+缓存目录必须在本地盘。
+-- .keel/memory/M-33333333-2222-4333-8444-555555555555-z.md --
+---
+schema: 1
+id: M-33333333-2222-4333-8444-555555555555
+kind: pointer
+status: candidate
+summary: 夹具数据在 src/ 下
+tags: [fixture]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: null
+by: agent:claude
+date: 2026-09-10
+---
+夹具数据在 src/ 下。
+-- .keel/memory/M-22222222-2222-4333-8444-555555555555-y.md --
+---
+schema: 1
+id: M-22222222-2222-4333-8444-555555555555
+kind: fact
+status: candidate
+summary: src/a.txt 里有 hello
+tags: [fixture]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2020-01-01
+by: agent:claude
+date: 2019-01-01
+---
+src/a.txt 里有 hello。

@@ -141,7 +141,9 @@ accepted | proven | revisit ──▶ superseded     仅当另一决策以 accep
 
 - `proposed` + `supersedes: [D-old]`：**只记录意图**。`D-old` 保持原状态。
 - 新决策 `proposed → accepted`：同一事务写入新文件、旧文件 `superseded` + `superseded_by`、规则迁移。任一步失败则整笔回滚。
-- `why` 默认有效结论：`accepted | proven | revisit`。`--history` 含 `rejected | superseded | proposed`，并标注状态。
+- `why` 默认列出非历史结论：`accepted | proven | revisit | proposed`。`--history` 追加 `rejected | superseded`，并标注状态。
+  判据是 `DecisionStatus.IsHistory()`，与知识索引的分层同一个函数。`proposed` 是待办不是历史——
+  一个正在等人拍板的方案比大多数已生效结论更该被看见。
 - 空正文模板允许保存为 `proposed`；`accepted` 要求四段均非空。无关/空 ADR 不能作为门禁覆盖。
 
 ## 4. 规则
@@ -463,6 +465,13 @@ keel retire  <R-…> --reason "<原因>" [--json]
 如果有决策的 `rule_migration` 曾把某条旧规则迁到这条，**提示**旧规则可以考虑恢复——只提示，不自动改。
 不删除任何历史。
 
+`archive <M-…> --reason` 是记忆一侧的对称命令：转 `archived`，在正文末尾追加一段带日期的归档原因。
+有别的记忆 `derived_from` 指向它时**提示**转述可能也该处理——只提示，不自动改。
+`archived` 是终态，再次 archive 报用法错误，不静默成功。
+
+这是记忆状态的显式入口。`check` 与 `review` 都不改写 `status`：状态转换只有两个来源，
+`keel verify` 真的跑完一次验证器，或者人显式改。时间不构成第三个来源。
+
 ### 8.8 `keel why`
 
 ```
@@ -731,10 +740,27 @@ fi
 
 ### 9.7 `.keel/knowledge/INDEX.md`
 
-`sync` 生成，整文件托管（`owned: '*'`），**进 git**。它是 clone 之后不装 keel 也能读的入口：
-有效决策、生效规则、记忆按状态分组、每条记忆背后的证据与验证时间。
+`sync` 生成，整文件托管（`owned: '*'`），**进 git**。它是 clone 之后不装 keel 也能读的入口。
 
 内容只来自仓库里的对象，不含本机路径、时间戳或探测结果——否则两台机器 sync 出来会不一样。
+
+**分两层。** 主表只列现行对象：决策、规则、记忆各一张表，记忆那张带验证时间与证据条数。
+历史对象退出主表，只进一张计数表：
+
+| 类别 | 历史状态 |
+|---|---|
+| 决策 | `superseded`、`rejected` |
+| 规则 | `retired` |
+| 记忆 | `archived` |
+
+判据是 `DecisionStatus.IsHistory()` / `RuleStatus.IsHistory()` / `MemoryStatus.IsHistory()`，
+`why --history` 用的是同一组函数——两边口径必须一致。
+
+`proposed` 的决策、`stale` 与 `disputed` 的记忆**不算历史**，留在主表：前者是待办，
+后两者是提醒，把它们藏进历史区等于替人做了「不用管」的判断。
+
+计数表最多四行，与历史对象条数无关——这是索引不随对象数无限变长的地方。
+`knowledge.index_history: true` 追加逐条清单（ID、状态、标题，决策再带 `superseded_by` 去向）。
 
 ### 9.8 `.claude/rules/keel.md`
 

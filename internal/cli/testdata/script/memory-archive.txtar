@@ -1,0 +1,107 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# archive 要 --reason：不写原因，下一个人不知道这条为什么不再算数。
+! exec keel archive M-11111111
+stderr '用法错误'
+stderr 'reason'
+
+# 只收记忆 ID。决策和规则各有自己的退场路径，语义不同，不共用一个命令。
+! exec keel archive D-33333333 --reason x
+stderr '需要一个记忆 ID'
+
+# 归档是一次合法状态转换，文件留着，原因写进正文。
+exec keel archive M-11111111 --reason '换成了 M-22222222 的写法'
+stdout '.keel/memory/M-11111111'
+stderr 'candidate → archived'
+# 有转述指向它，提示但不代劳。
+stderr 'derived_from 指向它'
+exec sh -c 'grep -c "^status: archived" .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md'
+stdout '1'
+exec sh -c 'grep -c "换成了 M-22222222 的写法" .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md'
+stdout '1'
+
+# 归档是终态：再归档一次报用法错误，不是静默成功。
+! exec keel archive M-11111111 --reason 再来一次
+stderr '已经是 archived'
+
+# 归档之后退出索引主表，转成历史计数。
+exec keel sync
+exec sh -c 'cat .keel/knowledge/INDEX.md'
+stdout '\| 记忆 \| archived \| 1 \|'
+! stdout '缓存目录必须在本地盘'
+
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 缓存目录必须在本地盘
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: null
+by: agent:claude
+date: 2026-09-10
+---
+缓存目录必须在本地盘。
+-- .keel/memory/M-22222222-2222-4333-8444-555555555555-y.md --
+---
+schema: 1
+id: M-22222222-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 缓存放本地盘，别放 NFS
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: [M-11111111-2222-4333-8444-555555555555]
+supersedes: []
+verified_at: null
+review_after: null
+by: agent:claude
+date: 2026-09-10
+---
+同一件事换个说法。
+-- .keel/decisions/D-33333333-2222-4333-8444-555555555555-z.md --
+---
+schema: 1
+id: D-33333333-2222-4333-8444-555555555555
+status: accepted
+title: 缓存放本地盘
+tags: [storage]
+scope: ["src/**"]
+supersedes: []
+superseded_by: []
+rule_migration: []
+evidence: []
+review_after: null
+by: agent:claude
+date: 2026-09-10
+---
+## 背景
+
+缓存以前放 NFS。
+
+## 决定
+
+放本地盘。
+
+## 理由
+
+NFS 上锁不可靠。
+
+## 影响
+
+需要每台机器各自清理。

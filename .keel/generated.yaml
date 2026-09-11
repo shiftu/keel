@@ -15,7 +15,7 @@ files:
     adapter: codex
   - path: .agents/skills/keel-review/SKILL.md
     owned: '*'
-    digest: sha256:19cd48c524f932f7a268171c401d2f1b4a235b2866edec8d2fc8743de5163ea1
+    digest: sha256:ccb3b9ae763ebe3ffcdd216bd7cd141b1d0d6252ea06d5fce6d74e3298921cb9
     source: .keel/skills/keel-review/SKILL.md
     adapter: codex
   - path: .claude/settings.json
@@ -35,7 +35,7 @@ files:
     adapter: claude
   - path: .claude/skills/keel-review/SKILL.md
     owned: '*'
-    digest: sha256:19cd48c524f932f7a268171c401d2f1b4a235b2866edec8d2fc8743de5163ea1
+    digest: sha256:ccb3b9ae763ebe3ffcdd216bd7cd141b1d0d6252ea06d5fce6d74e3298921cb9
     source: .keel/skills/keel-review/SKILL.md
     adapter: claude
   - path: .codex/hooks.json
@@ -45,7 +45,7 @@ files:
     adapter: codex
   - path: .keel/knowledge/INDEX.md
     owned: '*'
-    digest: sha256:100dda2adf2b475c864d16aba4b3e5670875e2b8e1d0321a20a455e2eb20e8d8
+    digest: sha256:50972959969dd10db11b2d53fb583aff7587d300cac168955217967d0cfa14e9
   - path: AGENTS.md
     owned: keel:begin..keel:end
     digest: sha256:7e3fb27cf6a4dd0c71dfbc792ccf0dd4190f16cf9a8600eb1283a27f498b948f

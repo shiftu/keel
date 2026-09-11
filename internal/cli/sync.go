@@ -69,7 +69,7 @@ func runSyncOpts(e *env, st *store.Store, opt syncOpts) error {
 	arts := []render.Artifact{{
 		Path:    render.KnowledgeIndexPath,
 		Mode:    render.ModeWholeFile,
-		Content: render.KnowledgeIndex(set),
+		Content: render.KnowledgeIndex(set, cfg),
 	}}
 	if opt.codemap || cfg.Knowledge.Codemap {
 		repo, err := gitx.Open(st.Root)

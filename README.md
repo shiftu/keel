@@ -19,6 +19,7 @@ keel note "…" --tag db                       记一条候选经验
 keel verify M-xxxx -- go test ./...          真跑一次验证器，把结果记成证据
 keel promote R-xxxx                          规则过了对照验证才生效
 keel retire R-xxxx --reason "…"              撤回一条规则，保留原因与历史
+keel archive M-xxxx --reason "…"             归档一条记忆，保留原因与历史
 keel task set --goal "…" --next "…"          跨会话、跨工具的任务交接
 keel brief --task "…" --path <路径>           任务相关的上下文包
 keel review                                  到期、失效、学习候选
@@ -78,6 +79,10 @@ M0（协议）、M1（统一底座）、M2（可信记忆）、M3（受控进化
 
 - M4：`keel init --from <git-url>[@<ref>]` 把模板仓库的 `.keel/` 可复用部分导入并把来源钉在一个 commit 上；
   `keel template update` 用三方比较更新，两边都改过的文件一个字节都不写；`sync --codemap` 出目录概览。
+
+- M5：`knowledge/INDEX.md` 分现行/历史两层，历史只出计数，索引不随对象数无限变长；
+  `keel archive` 是记忆退场的显式入口；`keel review` 给归档候选和索引压力信号。
+  淘汰不是删除，keel 也不替人决定淘汰谁——时间不是证据。
   导入的规则一律落成 candidate——模板给的是建议，要生效仍得在本地 `keel decide` 记依据、`keel promote` 跑对照验证。
 
 更多适配器（claude / codex 之外）未做。技能的对照评估继续后置：它要求宿主在固定任务集上执行任务，

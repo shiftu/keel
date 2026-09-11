@@ -1,0 +1,75 @@
+[!exec:git] skip '需要 git'
+[!unix] skip '夹具用 sh'
+
+exec git init -q
+exec keel init --tools claude
+
+# 主表只列现行结论；已归档的那条退出主表，只进历史计数。
+exec sh -c 'cat .keel/knowledge/INDEX.md'
+stdout '现行：决策 0 · 规则 0 · 记忆 1。历史 1 条见文末'
+stdout '缓存目录必须在本地盘'
+! stdout '这条早就不算数了'
+stdout '## 历史'
+stdout '\| 记忆 \| archived \| 1 \|'
+stdout 'keel why --history'
+
+# 默认不展开清单：历史只增不减，展开会让索引和它的 diff 一起长。
+! stdout 'M-99999999'
+stdout 'knowledge.index_history: true'
+
+# 打开开关才展开，ID 和摘要都在。
+exec sh -c 'sed -f on.sed .keel/keel.yaml > k.tmp && mv k.tmp .keel/keel.yaml'
+exec keel sync
+exec sh -c 'cat .keel/knowledge/INDEX.md'
+stdout '### 历史 · 记忆'
+stdout 'M-99999999'
+stdout '这条早就不算数了'
+
+# 历史结论默认查不到，--history 查得到。
+exec keel why --query 不算数
+stdout '没有找到'
+exec keel why --query 不算数 --history
+stdout '（历史）'
+
+-- on.sed --
+s/index_history: false/index_history: true/
+-- src/a.txt --
+hello
+-- .keel/memory/M-11111111-2222-4333-8444-555555555555-x.md --
+---
+schema: 1
+id: M-11111111-2222-4333-8444-555555555555
+kind: gotcha
+status: candidate
+summary: 缓存目录必须在本地盘
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: 2099-01-01
+by: agent:claude
+date: 2026-09-10
+---
+缓存目录必须在本地盘。
+-- .keel/memory/M-99999999-2222-4333-8444-555555555555-y.md --
+---
+schema: 1
+id: M-99999999-2222-4333-8444-555555555555
+kind: gotcha
+status: archived
+summary: 这条早就不算数了
+tags: [storage]
+scope: ["src/**"]
+conditions: {}
+evidence: []
+derived_from: []
+supersedes: []
+verified_at: null
+review_after: null
+by: agent:claude
+date: 2026-09-10
+---
+这条早就不算数了。

@@ -34,3 +34,5 @@ knowledge:
     - README.md
     - docs/**/*.md
   exclude: []
+  index_history: false      # 历史结论在索引里只出计数；true 展开成清单
+  index_soft_limit: 200     # 现行对象超过它，review 报 index_pressure；0 关闭

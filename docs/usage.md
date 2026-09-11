@@ -2,8 +2,8 @@
 
 对应设计：[design.md](design/design.md)。字段与命令规格：[formats.md](design/formats.md)。
 
-当前实现到 M4：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
-`task` / `template` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
+当前实现到 M5：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
+`archive` / `task` / `template` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
 `init --from`、`keel template status|update` 与 `sync --codemap` 都已接上。
 
 ## 安装
@@ -267,6 +267,20 @@ keel retire  <R-…> --reason "<原因>"
 `retire` 转 `retired`，把原因写进正文末尾。有决策的 `rule_migration` 曾把旧规则迁到这条时，
 会提示旧规则可以考虑恢复——只提示，不自动改。不删除任何历史。
 
+### `keel archive`
+
+```
+keel archive <M-…> --reason "<原因>"
+```
+
+记忆退场的显式入口，和规则的 `retire` 对称。转 `archived`，把原因写进正文末尾。
+
+归档不是删除：文件留在 `.keel/memory/`，`keel why --history` 查得到，只是退出知识索引主表
+和默认召回。有别的记忆用 `derived_from` 指向它时会提示转述可能也该处理——只提示，不自动改。
+
+**keel 不会自己归档任何东西。** 「过期太久」不构成归档理由：时间不是证据。
+要找该归档的，跑 `keel review` 看 `memory_archive_candidate`。
+
 ### `keel review`
 
 ```
@@ -284,7 +298,16 @@ keel review [--json]
 | `rule_candidate_incomplete` | 缺 `check.argv` / `from` / 某个方向的用例 |
 | `memory_cluster` | 同 scope 同 tag 的多条候选记忆，可能是同一条不变量 |
 | `memory_disputed` | 有反例指向它 |
+| `memory_archive_candidate` | 过了复查日期，而且从来没有过证据 |
+| `index_pressure` | 现行对象超过 `knowledge.index_soft_limit` |
 | `decision_reverted` | `git log` 里 revert 提交引用过这条决策 |
+
+`memory_archive_candidate` 的条件比 `memory_review_due` 更紧：**过期且一条证据都没有**。
+有证据但过期的那些该重新 `keel verify`，不该归档——两者出路不同。
+
+`index_pressure` 是信号不是门禁，只出现在 `review` 里，不进 `check`，更不进 pre-commit。
+现行对象太多不是错误，是体检结果：要么归档一批，要么把一簇记忆提炼成规则。
+做成门禁会产生「为了过门禁而删记忆」的反向激励。
 
 **条数只排审阅优先级。** 同一来源的重复转述在 `memory_cluster` 里算一条——
 「同一件事换个说法记三遍」不会变成三份依据。
@@ -366,6 +389,8 @@ mcp:
 knowledge:
   docs: [README.md, "docs/**/*.md"]
   codemap: false            # true 则每次 sync 都刷新 knowledge/CODEMAP.md
+  index_history: false      # true 则索引把历史结论展开成清单，默认只给计数
+  index_soft_limit: 200     # 现行对象超过它，review 报 index_pressure；0 关闭
 ```
 
 `go.mod` 与 `package.json` 会被解析成依赖集合，能区分格式调整、版本升级和新增依赖。
@@ -399,6 +424,17 @@ keel check --target range --base "$BASE_SHA" --head "$HEAD_SHA" --json
 
 `keel sync` 生成 `.keel/knowledge/INDEX.md` 并进 git：决策、规则、记忆各一张表，
 记忆那张还带验证时间和证据条数。clone 之后不装 keel 也能读。
+
+索引**分两层**，这是它在对象上千之后仍然可读的原因：
+
+- **现行**结论出全表。
+- **历史**结论只出一张计数表：决策 `superseded` / `rejected`、规则 `retired`、记忆 `archived`。
+  这张表最多四行，跟历史有多少条无关。
+
+历史一条都没删，`keel why --history` 查得到。要在索引里看清单，设 `knowledge.index_history: true`。
+
+`stale` 和 `disputed` 的记忆留在主表：它们是提醒（「这条过期了」「这条被反驳了」），
+藏进历史区等于替人做了「不用管」的判断。`proposed` 的决策同理——它是待办，不是历史。
 
 它是托管产物，手改会在下次 `sync` 报冲突而不是被默默覆盖。
 内容只来自仓库里的对象，不含本机路径或生成时间——否则两台机器 sync 出来就不一样了。

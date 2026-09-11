@@ -61,6 +61,12 @@ type KnowledgeConfig struct {
 	// 概览这一轮生成，下一轮普通 sync 会按产物所有权把它清掉——
 	// 要长期留着就在这里打开。
 	Codemap bool `yaml:"codemap"`
+	// IndexHistory 打开后，知识索引把历史结论展开成清单而不只给计数。
+	// 默认关：历史只增不减，展开会让索引和它的 diff 一起长。
+	IndexHistory bool `yaml:"index_history"`
+	// IndexSoftLimit 是现行对象数的软上限，超过后 keel review 报 index_pressure。
+	// 只是信号，不是门禁——见 design.md §12 M5。0 关闭。
+	IndexSoftLimit int `yaml:"index_soft_limit"`
 }
 
 // DefaultConfig 是 keel init 写出的配置。
@@ -85,9 +91,12 @@ func DefaultConfig() Config {
 			Manifests:         []string{"go.mod", "package.json", "pyproject.toml", "Cargo.toml", "requirements*.txt"},
 			WatchTopLevelDirs: true,
 		},
-		Sync:      SyncConfig{CommitOutputs: true, SkillsMode: "copy"},
-		MCP:       MCPConfig{Servers: map[string]MCPServer{}},
-		Knowledge: KnowledgeConfig{Docs: []string{"README.md", "docs/**/*.md"}},
+		Sync: SyncConfig{CommitOutputs: true, SkillsMode: "copy"},
+		MCP:  MCPConfig{Servers: map[string]MCPServer{}},
+		Knowledge: KnowledgeConfig{
+			Docs:           []string{"README.md", "docs/**/*.md"},
+			IndexSoftLimit: 200,
+		},
 	}
 }
 
@@ -142,6 +151,9 @@ func (c Config) Validate() error {
 		if srv.Command == "" {
 			return fmt.Errorf("mcp.servers.%s.command 不能为空", name)
 		}
+	}
+	if c.Knowledge.IndexSoftLimit < 0 {
+		return fmt.Errorf("knowledge.index_soft_limit 不能为负（0 表示关闭）")
 	}
 	return nil
 }

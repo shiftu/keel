@@ -96,6 +96,8 @@ func reviewText(r *review.Report) string {
 		s.Decisions, s.ActiveDecisions, s.DecisionsWithEv,
 		s.Rules, s.ActiveRules, s.CandidateRules,
 		s.Memories, s.VerifiedMemories, s.Evidence)
+	// 索引两层的口径与 knowledge/INDEX.md 一致：历史不进主表，也不算进压力。
+	fmt.Fprintf(&sb, "索引：现行 %d · 历史 %d\n", s.Current, s.History)
 
 	for _, n := range r.Notes {
 		fmt.Fprintf(&sb, "\n%s\n", n)

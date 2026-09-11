@@ -59,6 +59,9 @@ type Stats struct {
 	Memories         int `json:"memories"`
 	VerifiedMemories int `json:"verified_memories"`
 	Evidence         int `json:"evidence"`
+	// Current / History 是知识索引的两层，口径与 render.KnowledgeIndex 一致。
+	Current int `json:"current_objects"`
+	History int `json:"history_objects"`
 }
 
 // Report 是一次 keel review 的完整输出。
@@ -77,6 +80,8 @@ const (
 	CodeRuleIncomplete   = "rule_candidate_incomplete"
 	CodeMemoryCluster    = "memory_cluster"
 	CodeMemoryDisputed   = "memory_disputed"
+	CodeMemoryArchive    = "memory_archive_candidate"
+	CodeIndexPressure    = "index_pressure"
 	CodeDecisionReverted = "decision_reverted"
 )
 
@@ -121,8 +126,10 @@ func Build(in Input) *Report {
 	collectDue(r, set, dg, in.Now)
 	ruleCandidates(r, set)
 	memoryCandidates(r, set)
+	archiveCandidates(r, set, in.Now)
 	revertedDecisions(r, set, in.Reverted)
 	r.Stats = stats(set, dg)
+	indexPressure(r, in.Config)
 
 	sort.SliceStable(r.Candidates, func(i, j int) bool {
 		if r.Candidates[i].Code != r.Candidates[j].Code {
@@ -382,5 +389,66 @@ func stats(set *store.Set, dg *store.Digester) Stats {
 			s.VerifiedMemories++
 		}
 	}
+	for _, d := range set.Decisions {
+		countLayer(&s, d.Status.IsHistory())
+	}
+	for _, r := range set.Rules {
+		countLayer(&s, r.Status.IsHistory())
+	}
+	for _, m := range set.Memories {
+		countLayer(&s, m.Status.IsHistory())
+	}
 	return s
+}
+
+func countLayer(s *Stats, history bool) {
+	if history {
+		s.History++
+		return
+	}
+	s.Current++
+}
+
+// archiveCandidates 挑出「过了复查日期，而且一条证据都没有」的记忆。
+//
+// 条件卡得比 memory_review_due 更紧是有意的：有证据但过期的那些该重新 keel verify，
+// 不该归档——两者出路不同，合成一条就等于把「再验一次」和「不再算数」混为一谈。
+//
+// 这里只给候选。keel 不会自己归档任何东西：时间不是证据（design.md §12 M5）。
+func archiveCandidates(r *Report, set *store.Set, now time.Time) {
+	for _, m := range set.Memories {
+		if m.Status.IsHistory() || m.Kind == store.MemKindCounterexample {
+			continue
+		}
+		if m.ReviewAfter == nil || m.ReviewAfter.IsZero() || !m.ReviewAfter.Time.Before(now) {
+			continue
+		}
+		if len(set.EvidenceFor(m.ID)) > 0 {
+			continue
+		}
+		r.Candidates = append(r.Candidates, Candidate{
+			Code: CodeMemoryArchive, Subject: m.ID.String(),
+			Reason: fmt.Sprintf("「%s」复查日期 %s 已过，且从来没有过证据",
+				m.Summary, m.ReviewAfter),
+			Next: fmt.Sprintf("还成立就 keel verify 补证据；不成立就 keel archive %s --reason \"…\"",
+				m.ID.Short()),
+		})
+	}
+}
+
+// indexPressure 在现行对象超过软上限时把归档和提炼的优先级顶上来。
+//
+// 它只出现在 review 里，不进 check，更不进 pre-commit。现行对象太多不是错误，
+// 是体检结果；做成门禁会产生「为了过门禁而删记忆」的反向激励。
+func indexPressure(r *Report, cfg store.Config) {
+	limit := cfg.Knowledge.IndexSoftLimit
+	if limit <= 0 || r.Stats.Current <= limit {
+		return
+	}
+	r.Candidates = append(r.Candidates, Candidate{
+		Code: CodeIndexPressure,
+		Reason: fmt.Sprintf("现行对象 %d 条，超过 knowledge.index_soft_limit（%d）；历史 %d 条不计在内",
+			r.Stats.Current, limit, r.Stats.History),
+		Next: "看本报告里的 memory_archive_candidate 和 memory_cluster：要么归档一批，要么把一簇记忆提炼成规则",
+	})
 }
