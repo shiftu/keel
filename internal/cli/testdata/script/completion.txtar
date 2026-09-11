@@ -1,0 +1,55 @@
+# 补全是装一次就不用再管的东西：脚本只是胶水，候选每次现问二进制要。
+# 这里盯住两件事：候选跟着仓库内容走；--install 反复跑不会越装越多。
+
+env HOME=$WORK/home
+env SHELL=/bin/zsh
+
+# 1. 不带参数：认出当前 shell，把最省事的那条命令给出来。
+exec keel completion
+stdout 'zsh'
+stdout 'keel completion --install'
+
+# 2. 点名 shell：把脚本打到标准输出，好让人自己决定装哪。
+exec keel completion bash
+stdout '_keel_complete'
+stdout 'keel __complete'
+exec keel completion fish
+stdout '__keel_complete'
+
+# 3. 不认识的 shell 是用法错误，不是「装不上」。
+exec keelrc completion nushell
+stdout 'keel-exit=2'
+stderr '不认识的 shell'
+
+# 4. --install：脚本落位，rc 里加上加载它的那几行。
+exec keel completion --install
+stdout '补全已装好'
+exists $WORK/home/.zsh/completions/_keel
+grep 'keel completion' $WORK/home/.zshrc
+
+# 5. 再装一次不该多出一份 —— 升级时会反复跑到它。
+exec keel completion --install
+stdout '已经是最新的'
+grep -count=1 '>>> keel completion >>>' $WORK/home/.zshrc
+
+# 6. 候选跟着这个仓库里真实存在的对象走。
+exec keel __complete --cur= promote
+stdout 'R-11111111'
+exec keel __complete --cur= archive
+stdout 'M-22222222'
+! stdout 'R-11111111'
+
+# 7. 敲了一半的东西不该被当成参数校验 —— 补全绝不能报用法错误。
+exec keelrc __complete --cur=--nosuch why
+stdout 'keel-exit=0'
+exec keelrc __complete --cur= nosuchcmd
+stdout 'keel-exit=0'
+
+-- home/.zshrc --
+export PATH=/my/bin:$PATH
+-- .keel/keel.yaml --
+version: 1
+-- .keel/rules/R-11111111-1111-4111-8111-111111111111-规则.md --
+placeholder
+-- .keel/memory/M-22222222-2222-4222-8222-222222222222-记忆.md --
+placeholder

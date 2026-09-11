@@ -31,26 +31,30 @@ type command struct {
 	name    string
 	summary string
 	run     func(e *env, args []string) error
+	hidden  bool // 内部入口，不在帮助里推荐
 }
 
 func commands() []command {
 	return []command{
-		{"init", "建 .keel/，探测工具，安装 git hooks，然后 sync", cmdInit},
-		{"sync", ".keel/ → 工具原生文件；先规划再写入", cmdSync},
-		{"decide", "记录一次架构决策", cmdDecide},
-		{"why", "查某路径或主题下的决策、规则、记忆", cmdWhy},
-		{"note", "记一条候选记忆", cmdNote},
-		{"check", "按 target 验证对象、规则与语义变化", cmdCheck},
-		{"verify", "跑一次验证器，把结果记成证据", cmdVerify},
-		{"promote", "规则对照验证：candidate → active", cmdPromote},
-		{"retire", "撤回一条规则，保留原因与历史", cmdRetire},
-		{"archive", "归档一条记忆，保留原因与历史", cmdArchive},
-		{"task", "任务接续摘要：set / show / clear", cmdTask},
-		{"template", "模板来源：status / update", cmdTemplate},
-		{"brief", "输出任务相关的上下文包", cmdBrief},
-		{"review", "进化报告：到期、候选、工作流建议", cmdReview},
-		{"hook", "内部：宿主 hook 事件编解码", cmdHook},
-		{"version", "打印版本", cmdVersion},
+		{"init", "建 .keel/，探测工具，安装 git hooks，然后 sync", cmdInit, false},
+		{"sync", ".keel/ → 工具原生文件；先规划再写入", cmdSync, false},
+		{"decide", "记录一次架构决策", cmdDecide, false},
+		{"why", "查某路径或主题下的决策、规则、记忆", cmdWhy, false},
+		{"note", "记一条候选记忆", cmdNote, false},
+		{"check", "按 target 验证对象、规则与语义变化", cmdCheck, false},
+		{"verify", "跑一次验证器，把结果记成证据", cmdVerify, false},
+		{"promote", "规则对照验证：candidate → active", cmdPromote, false},
+		{"retire", "撤回一条规则，保留原因与历史", cmdRetire, false},
+		{"archive", "归档一条记忆，保留原因与历史", cmdArchive, false},
+		{"task", "任务接续摘要：set / show / clear", cmdTask, false},
+		{"template", "模板来源：status / update", cmdTemplate, false},
+		{"brief", "输出任务相关的上下文包", cmdBrief, false},
+		{"review", "进化报告：到期、候选、工作流建议", cmdReview, false},
+		{"completion", "装 shell 补全（不带参数会认一下当前 shell）", cmdCompletion, false},
+		{"update", "把 keel 自己换成 GitHub 上的新版", cmdUpdate, false},
+		{"hook", "内部：宿主 hook 事件编解码", cmdHook, true},
+		{"__complete", "内部：给补全脚本算候选", cmdComplete, true},
+		{"version", "打印版本", cmdVersion, false},
 	}
 }
 
@@ -102,10 +106,10 @@ func Run(args []string, stdout, stderr io.Writer, stdin io.Reader) int {
 func commandList() string {
 	var b strings.Builder
 	for _, c := range commands() {
-		if c.name == "hook" {
-			continue // 内部入口，不在帮助里推荐
+		if c.hidden {
+			continue
 		}
-		fmt.Fprintf(&b, "  %-8s %s\n", c.name, c.summary)
+		fmt.Fprintf(&b, "  %-10s %s\n", c.name, c.summary)
 	}
 	return b.String()
 }

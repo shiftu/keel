@@ -22,6 +22,13 @@ git status --short            # 必须干净
 - 这一版改了 `.keel/` 里任何文件格式的话，`docs/design/formats.md` 已经跟着改。
 - 改了 hook 或适配器输出的话，`.keel/generated.yaml` 里的 `adapter_schema` 已经跟着提。
 
+`keel update` 依赖发布产物的两件事，改 `Makefile` 的 `TARGETS` 或产物命名时要一起想到：
+
+- **资产名必须是 `keel_<goos>_<goarch>`（Windows 加 `.exe`）**。对不上的表现是用户那边 404，
+  不是「装错了」。`internal/selfupdate` 有个测试直接读这个 Makefile 钉住它。
+- **`SHA256SUMS` 必须跟二进制一起上传**。`keel update` 下完先对校验和，对不上就删掉不装；
+  发布里没有这个文件，它会直接拒绝安装而不是「将就装上」。
+
 ## 打 tag 并发布
 
 ```sh

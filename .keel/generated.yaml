@@ -45,7 +45,7 @@ files:
     adapter: codex
   - path: .keel/knowledge/INDEX.md
     owned: '*'
-    digest: sha256:50972959969dd10db11b2d53fb583aff7587d300cac168955217967d0cfa14e9
+    digest: sha256:24e440b9b2103ebb1977ba17fbd0f7b1b0e12b83422e3521e19e2e1e91b523ee
   - path: AGENTS.md
     owned: keel:begin..keel:end
     digest: sha256:7e3fb27cf6a4dd0c71dfbc792ccf0dd4190f16cf9a8600eb1283a27f498b948f

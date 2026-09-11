@@ -24,6 +24,8 @@ keel task set --goal "…" --next "…"          跨会话、跨工具的任务�
 keel brief --task "…" --path <路径>           任务相关的上下文包
 keel review                                  到期、失效、学习候选
 keel check --target index                    验证真正要提交的内容
+keel completion --install                    装 shell 补全（自己认当前 shell）
+keel update                                  换成 GitHub 上的新版（校验和必对）
 ```
 
 ## 安装
@@ -46,6 +48,23 @@ irm https://raw.githubusercontent.com/shiftu/keel/main/install.ps1 | iex
 
 装完确认一下 `command -v keel` 能找到它 —— keel 装的 git hook 就是靠这个找二进制的，
 不在 PATH 里，hook 会静默放行而不是报错。
+
+上面两个脚本会顺手把 shell 补全装上（认不出 shell 就跳过）。手动装或换一家 shell：
+
+```bash
+keel completion              # 认一下当前 shell，告诉你怎么装
+keel completion --install    # 直接装到位；bash / zsh / fish / powershell 都行
+```
+
+补全装一次就够了：命令、选项、规则与记忆的 ID，都是每次按 Tab 现问 keel 要的，
+keel 升级、仓库里多了几条规则，都不用重装。
+
+### 升级
+
+```bash
+keel update            # 换成最新的那个；下完先对 SHA256SUMS，对不上就不装
+keel update --check    # 只问一句有没有新版（加 --json 给 agent 看）
+```
 
 ## 上手
 

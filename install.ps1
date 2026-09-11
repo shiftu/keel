@@ -21,5 +21,9 @@ if ($userPath -notlike "*$dir*") {
 }
 & (Join-Path $dir "keel.exe") version
 
+# 顺手把 PowerShell 补全装上：问不出 $PROFILE 就跳过，不会让安装失败。
+Write-Host ""
+& (Join-Path $dir "keel.exe") completion --install powershell --quiet
+
 Write-Host ""
 Write-Host "下一步：cd <你的仓库>; keel init"

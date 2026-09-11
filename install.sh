@@ -39,5 +39,13 @@ case ":$PATH:" in
 esac
 echo
 "$dir/keel" version
+
+# 顺手把 shell 补全装上。它自己认当前 shell，认不出就跳过。
+# 不写成 `… || true`：这个脚本开了 set -e，装不上要说一声，而不是假装没发生。
+echo
+if ! "$dir/keel" completion --install --quiet; then
+  echo "补全没装上（不影响 keel 本身）。想自己装：keel completion"
+fi
+
 echo
 echo "下一步：cd <你的仓库> && keel init"

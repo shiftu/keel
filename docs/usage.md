@@ -3,7 +3,8 @@
 对应设计：[design.md](design/design.md)。字段与命令规格：[formats.md](design/formats.md)。
 
 当前实现到 M5：`init` / `sync` / `decide` / `why` / `note` / `verify` / `promote` / `retire` /
-`archive` / `task` / `template` / `check` / `brief` / `review` / `hook` / `version` 全部可用。
+`archive` / `task` / `template` / `check` / `brief` / `review` / `completion` / `update` /
+`hook` / `version` 全部可用。
 `init --from`、`keel template status|update` 与 `sync --codemap` 都已接上。
 
 ## 安装
@@ -37,7 +38,10 @@ make install          # 装到 $KEEL_INSTALL_DIR，默认 ~/.local/bin
 **装完确认 `command -v keel` 找得到它。** git hook 里用的是 `command -v keel`，
 不在 PATH 里就自动放行 —— 这是为了不拦住没装 keel 的同事，代价是你自己也会被静默跳过。
 
-发版流程见 [release.md](release.md)。
+两个安装脚本都会顺手跑一次 `keel completion --install`（认不出 shell 就跳过，不影响安装）。
+手动装、换 shell、或者从 Releases 直接下二进制的，见下面的 [`keel completion`](#keel-completion)。
+
+升级用 [`keel update`](#keel-update)。发版流程见 [release.md](release.md)。
 
 ## 快速上手
 
@@ -77,6 +81,8 @@ Codex 侧还要走一次原生项目信任流程，所以这两项报 `unknown` 
 
 列表选项（`--tag` / `--scope` / `--path` / `--condition` / `--rule-migration`）**既能重复给也能逗号分隔**：
 `--tag a --tag b` 与 `--tag a,b` 等价。重复给不会静默只留最后一个。
+
+命令名、选项、以及规则和记忆的 ID 都能按 Tab 补出来，见 [`keel completion`](#keel-completion)。
 
 
 ### `keel init`
@@ -347,6 +353,71 @@ keel brief [--task "<要做什么>"] [--path <路径>] [--action <动作类别>]
 输出里的**工作流建议上限**由 `keel.yaml` 的 `workflow` 算出来：
 `min(default_level, 命中的 actions, 命中的 paths)`。tag 只服务检索，不参与计算，
 所以 `db` 下有几条成功先例不会给「删生产数据」放行。
+
+### `keel completion`
+
+```sh
+keel completion                    # 认一下当前 shell，把最省事的那条命令给出来
+keel completion --install          # 直接装到位（不给 shell 名就自己认）
+keel completion --install zsh      # 点名装哪家
+keel completion bash               # 只把脚本打到标准输出，自己决定放哪
+```
+
+支持 bash / zsh / fish / powershell。`--install` 做两件事：把脚本写到这家 shell 认的位置，
+再往 rc 文件里塞一段带标记的加载语句。
+
+| shell | 脚本位置 | 改哪个 rc |
+|---|---|---|
+| bash | `~/.local/share/bash-completion/completions/keel` | `~/.bashrc` |
+| zsh | `~/.zsh/completions/_keel` | `~/.zshrc` |
+| fish | `~/.config/fish/completions/keel.fish` | 不用改，fish 自己发现 |
+| powershell | `$PROFILE` 旁边的 `keel.completion.ps1` | `$PROFILE` |
+
+rc 里那一段用 `# >>> keel completion >>>` / `# <<< keel completion <<<` 框起来，
+重装是整段替换，不会越装越多；标记外面你自己写的东西一个字都不动。
+
+**装一次就够了。** 脚本只有十行胶水，每按一次 Tab 就回头问一次 `keel __complete`，
+所以候选永远跟着当前这个二进制和当前这个仓库走：
+
+```sh
+keel promote <Tab>          # 列出 .keel/rules/ 里的规则 ID，后面跟着 slug
+keel verify <Tab>           # 记忆和决策的 ID
+keel why --path <Tab>       # 仓库里的路径
+keel check --target <Tab>   # worktree / index / commit-msg / range
+```
+
+给的是短前缀（`R-1a2b3c4d`）——命令行上认短前缀，人也只记得住这么长。
+敲得比短前缀长时会改给完整 ID。`-C <dir>` 会被认出来：问的是那个仓库里有什么。
+
+macOS 的 bash 有个坑：终端默认开登录 shell，登录 shell 只读 `~/.bash_profile` 不读 `~/.bashrc`。
+`--install` 发现这种情况会提醒一句，但不会替你改 `~/.bash_profile`。
+
+### `keel update`
+
+```sh
+keel update                  # 换成最新的那个
+keel update --check          # 只问一句有没有新版，不下载
+keel update --check --json   # 同上，机器可读
+keel update --version v0.5.0 # 装指定版本（降级也走它）
+keel update --force          # 版本一样也重装一次
+```
+
+从 GitHub Releases 下当前平台的那个二进制，**下完先对发布时一起传的 `SHA256SUMS`，
+对不上就当场删掉、不安装**。跳过校验的自更新等于给自己开一条后门，所以这一步没有开关：
+发布里没有 `SHA256SUMS`，`keel update` 直接拒绝安装。
+
+顺序是刻意的：先问清楚要装哪个版本、需不需要装，再动手下载；下完先校验，校验过了才碰目标文件。
+任何一步失败，你手里那个 keel 都还是完好的。
+
+几个不那么显然的地方：
+
+- 替换的是 `keel` 软链指向的那个真文件，不是软链本身——否则链接会断。
+- 临时文件落在目标同目录：跨盘 rename 不是原子的，有些系统上直接失败。
+- 目标目录不可写时直接说清楚，并给出 `sudo keel update` 这条路，而不是下载完才失败。
+- 自己编的构建（`git describe` 打出 `v0.5.0-3-gabcdef`）比不出新旧。这时不会假装「已经最新」
+  把更新请求吃掉，而是说清楚比不了，然后照装。
+
+`--check --json` 的字段：`current` / `latest` / `update_available` / `comparable` / `updated`。
 
 ### `keel hook`
 
